@@ -1,14 +1,16 @@
-# 🎥 VISCA Bridge – Raspberry Pi Zero Edition
+# 🎥 VISCA Bridge – Raspberry Pi Zero Edition (Marshall CV620)
 
 **Ultra-leichte VISCA-over-IP ↔ RS-232 Bridge**  
-für PTZ-Kameras (Sony, Canon, etc.), optimiert für den **Raspberry Pi Zero / Zero 2 W**.  
-Minimaler RAM- und CPU-Verbrauch mit integriertem Webinterface zur Steuerung und Statusanzeige.
+speziell für **Marshall CV620** PTZ-Kameras entwickelt.  
+Optimiert für den **Raspberry Pi Zero / Zero 2 W** mit minimalem RAM- und CPU-Verbrauch  
+und integriertem Webinterface zur Steuerung, Statusanzeige und Diagnose.
 
 ---
 
 ## ⚙️ Funktionen
 
 - VISCA-over-IP ↔ RS-232 Bridge (bidirektional)
+- Voll kompatibel mit **Marshall CV620**, inkl. Power-, Home- & Query-Befehlen
 - Minimalistisches **Web-UI**
 - Live-Status & Logs
 - Manuelle Hex-Befehle senden
@@ -42,7 +44,7 @@ visca_bridge/
 ### 2. Projekt klonen oder kopieren
 
 ```bash
-git clone https://github.com/robin1053/visca-bridge.git
+git clone https://github.com/<dein-user>/visca-bridge.git
 cd visca-bridge
 ```
 
@@ -71,7 +73,7 @@ python3 visca_bridge.py
 Beispielausgabe:
 ```
 ========================================
-VISCA Bridge - Pi Zero Optimiert
+VISCA Bridge - Marshall CV620
 ========================================
 [I] Serial: /dev/serial0@9600
 [I] VISCA: 0.0.0.0:52381
@@ -90,7 +92,7 @@ Du siehst:
 - Systemstatus (Bridge & Kamera)
 - Letzte Log-Einträge
 - Hex-Eingabe für Befehle
-- Schnellzugriff für gängige VISCA-Kommandos
+- Schnellzugriff für gängige **CV620 VISCA-Kommandos**
 
 ---
 
@@ -103,22 +105,23 @@ VISCA_IP_HOST = '0.0.0.0'    # IP-Serveradresse
 VISCA_IP_PORT = 52381        # VISCA-Port
 WEB_PORT = 8080              # Webserver-Port
 SERIAL_PORT = '/dev/serial0' # RS232-Interface
-SERIAL_BAUDRATE = 9600       # Baudrate
+SERIAL_BAUDRATE = 9600       # Baudrate (Marshall CV620 Standard)
 MAX_LOG_ENTRIES = 50         # Loggröße (RAM sparen)
 ```
 
 ---
 
-## 🧠 Steuerbefehle
+## 🧠 Steuerbefehle (Marshall CV620)
 
-| Aktion       | VISCA-Hex-Befehl              |
-|---------------|------------------------------|
-| Power On      | `81 01 04 07 02 FF` |
-| Power Off     | `81 01 04 07 03 FF` |
-| Query Status  | `81 09 04 07 FF`     |
-| Home Position | `81 01 06 01 FF`     |
+| Aktion             | VISCA-Hex-Befehl              | Beschreibung |
+|--------------------|------------------------------|---------------|
+| Power On           | `81 01 04 00 02 FF` | Kamera einschalten |
+| Power Off          | `81 01 04 00 03 FF` | Kamera ausschalten |
+| Query Power State  | `81 09 04 00 FF`     | Status abfragen |
+| Home Position      | `81 01 06 01 FF`     | Kamera zentrieren |
+| Pan/Tilt Stop      | `81 01 06 01 00 00 03 01 FF` | Bewegung stoppen |
 
-Beliebige weitere VISCA-Befehle können im Web-UI manuell eingegeben werden.
+Alle Hex-Befehle sind **kompatibel zur CV620** und können im Web-UI manuell eingegeben oder automatisiert gesendet werden.
 
 ---
 
@@ -131,7 +134,7 @@ sudo nano /etc/systemd/system/visca.service
 Inhalt:
 ```ini
 [Unit]
-Description=VISCA Bridge
+Description=VISCA Bridge for Marshall CV620
 After=network.target
 
 [Service]
@@ -164,7 +167,8 @@ sudo systemctl status visca
 |----------|---------|
 | Kein Zugriff auf `/dev/serial0` | Prüfe `raspi-config` → Serial aktiviert? |
 | Webinterface lädt nicht | Port 8080 bereits belegt? Anderen `WEB_PORT` wählen |
-| Kamera reagiert nicht | TX/RX-Leitungen gekreuzt? Baudrate korrekt? |
+| CV620 reagiert nicht | TX/RX-Leitungen gekreuzt? Baudrate korrekt (9600)? |
+| Keine Power-Reaktion | Kamera im VISCA-Modus? Prüfe CV620 Menü |
 | Hohe CPU-Last | Andere Prozesse blockieren Serial? Prüfe per `top` |
 
 ---
@@ -178,5 +182,6 @@ MIT License – frei verwendbar, modifizierbar und erweiterbar.
 ## ❤️ Credits
 
 Entwickelt für den **Raspberry Pi Zero**,  
+spezifisch getestet mit der **Marshall CV620 PTZ-Kamera**,  
 optimiert für maximale Effizienz bei minimalem Overhead.  
-Kompatibel mit gängigen **VISCA-Kameras über RS-232**.
+Kompatibel mit allen VISCA-basierten Steuerungen über RS-232.
