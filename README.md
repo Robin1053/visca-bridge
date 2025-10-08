@@ -1,79 +1,68 @@
-# 🎥 VISCA Bridge – Raspberry Pi Zero Edition (Marshall CV620)
 
-**Ultra-leichte VISCA-over-IP ↔ RS-232 Bridge**  
-speziell für **Marshall CV620** PTZ-Kameras entwickelt.  
-Optimiert für den **Raspberry Pi Zero / Zero 2 W** mit minimalem RAM- und CPU-Verbrauch  
-und integriertem Webinterface zur Steuerung, Statusanzeige und Diagnose.
+# 🎥 VISCA Bridge – Marshall CV620 Edition
+
+**VISCA-over-IP ↔ RS-232 Bridge**  
+Spezialversion für **Marshall CV620 PTZ-Kameras** – optimiert für den **Raspberry Pi Zero / Zero 2 W**.  
+Ultra-leichtgewichtig, stabil, mit integriertem **Webinterface** und allen wichtigen CV620-Presets (Zoom, Fokus, PTZ, Presets usw.).
 
 ---
 
-## ⚙️ Funktionen
+## ⚙️ Hauptfunktionen
 
 - VISCA-over-IP ↔ RS-232 Bridge (bidirektional)
-- Voll kompatibel mit **Marshall CV620**, inkl. Power-, Home- & Query-Befehlen
-- Minimalistisches **Web-UI**
-- Live-Status & Logs
-- Manuelle Hex-Befehle senden
-- Presets: Power On/Off, Home Position, Query
-- Optimiert für **geringe Last auf Pi Zero**
+- Voll kompatibel mit **Marshall CV620** Befehlen
+- Live-Webinterface mit Status, Logs und Befehlssteuerung
+- Integrierte Presets:
+  - Power On/Off, Zoom Tele/Wide, Fokus, PTZ, Preset Recall/Set usw.
+- Kompaktes HTML-Frontend (`web/index.html`)
+- Läuft stabil auf **Pi Zero 1 GHz / 512 MB RAM**
 
 ---
 
 ## 📁 Projektstruktur
 
 ```
-visca_bridge/
-├── visca_bridge.py        # Hauptskript
+visca_bridge_cv620/
+├── visca_bridge_cv620.py    # Hauptskript
 └── web/
-    └── index.html         # Webinterface (Frontend)
+    └── index.html           # Webinterface (Frontend)
 ```
 
 ---
 
-## 🔧 Installation
-
-### 1. Voraussetzungen
+## 🔧 Voraussetzungen
 
 - Raspberry Pi OS Lite (empfohlen)
-- Python 3 installiert:
-  ```bash
-  sudo apt update
-  sudo apt install python3 python3-serial -y
-  ```
+- Aktivierte serielle Schnittstelle
+- Python 3 + PySerial
 
-### 2. Projekt klonen oder kopieren
+### Installation:
 
 ```bash
-git clone https://github.com/<dein-user>/visca-bridge.git
-cd visca-bridge
+sudo apt update
+sudo apt install python3 python3-serial -y
 ```
-
-### 3. Serielle Schnittstelle aktivieren
-
+Serielle Schnittstelle aktivieren:
 ```bash
 sudo raspi-config
-```
-- **Interface Options → Serial Port**
-  - **Login Shell über Serial?** → *Nein*
-  - **Serial Hardware aktivieren?** → *Ja*
-
-Danach neu starten:
-```bash
+# → Interface Options → Serial Port
+# → Login Shell über Serial? → Nein
+# → Serial Hardware aktivieren? → Ja
 sudo reboot
 ```
 
 ---
 
-## ▶️ Starten
+## ▶️ Start
 
 ```bash
-python3 visca_bridge.py
+python3 visca_bridge_cv620.py
 ```
 
 Beispielausgabe:
 ```
 ========================================
-VISCA Bridge - Marshall CV620
+VISCA Bridge - CV620 Edition
 ========================================
 [I] Serial: /dev/serial0@9600
 [I] VISCA: 0.0.0.0:52381
@@ -85,52 +74,58 @@ VISCA Bridge - Marshall CV620
 
 ## 🌐 Webinterface
 
-Im Browser öffnen:  
-👉 `http://<dein-pi>:8080/`
-
-Du siehst:
-- Systemstatus (Bridge & Kamera)
-- Letzte Log-Einträge
-- Hex-Eingabe für Befehle
-- Schnellzugriff für gängige **CV620 VISCA-Kommandos**
+Öffne im Browser:
+```
+http://<dein-pi>:8080/
+```
+**Funktionen:**
+- Verbindungsstatus & Loganzeige
+- Preset-Buttons für Zoom, Fokus, PTZ, Presets usw.
+- Manuelle VISCA-Befehle als Hexcode senden
 
 ---
 
 ## ⚡ Konfiguration
 
-In `visca_bridge.py` oben anpassbar:
+Anpassbar im Kopf des Skripts:
 
 ```python
-VISCA_IP_HOST = '0.0.0.0'    # IP-Serveradresse
-VISCA_IP_PORT = 52381        # VISCA-Port
-WEB_PORT = 8080              # Webserver-Port
-SERIAL_PORT = '/dev/serial0' # RS232-Interface
-SERIAL_BAUDRATE = 9600       # Baudrate (Marshall CV620 Standard)
-MAX_LOG_ENTRIES = 50         # Loggröße (RAM sparen)
+VISCA_IP_HOST = '0.0.0.0'      # IP-Adresse für Bridge
+VISCA_IP_PORT = 52381          # VISCA TCP-Port
+WEB_PORT = 8080                # Webserver-Port
+SERIAL_PORT = '/dev/serial0'   # UART-Port
+SERIAL_BAUDRATE = 9600         # Marshall CV620 Standard
+MAX_LOG_ENTRIES = 50           # RAM-Schonung
 ```
 
 ---
 
-## 🧠 Steuerbefehle (Marshall CV620)
+## 🧠 CV620 VISCA-Presets
 
-| Aktion             | VISCA-Hex-Befehl              | Beschreibung |
-|--------------------|------------------------------|---------------|
-| Power On           | `81 01 04 00 02 FF` | Kamera einschalten |
-| Power Off          | `81 01 04 00 03 FF` | Kamera ausschalten |
-| Query Power State  | `81 09 04 00 FF`     | Status abfragen |
-| Home Position      | `81 01 06 01 FF`     | Kamera zentrieren |
-| Pan/Tilt Stop      | `81 01 06 01 00 00 03 01 FF` | Bewegung stoppen |
+Beispiele aus `VISCA_PRESETS`:
 
-Alle Hex-Befehle sind **kompatibel zur CV620** und können im Web-UI manuell eingegeben oder automatisiert gesendet werden.
+| Kategorie | Aktion | Befehl (Hex) |
+|------------|---------|--------------|
+| Power | Power On | `81 01 04 00 02 FF` |
+| Power | Power Off | `81 01 04 00 03 FF` |
+| Zoom | Tele (Fast) | `81 01 04 07 27 FF` |
+| Zoom | Wide (Fast) | `81 01 04 07 37 FF` |
+| Focus | Auto | `81 01 04 38 02 FF` |
+| Focus | One Push | `81 01 04 18 01 FF` |
+| Pan/Tilt | Home | `81 01 06 04 FF` |
+| Pan/Tilt | Stop | `81 01 06 01 18 18 03 03 FF` |
+| Preset | Recall 1 | `81 01 04 3F 02 01 FF` |
+| Preset | Set 1 | `81 01 04 3F 01 01 FF` |
+
+Alle Kommandos sind **kompatibel mit der Marshall CV620**.
 
 ---
 
-## 🔁 Autostart beim Booten (optional)
+## 🔁 Autostart beim Booten
 
 ```bash
-sudo nano /etc/systemd/system/visca.service
+sudo nano /etc/systemd/system/visca_cv620.service
 ```
-
 Inhalt:
 ```ini
 [Unit]
@@ -138,25 +133,23 @@ Description=VISCA Bridge for Marshall CV620
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/visca_bridge/visca_bridge.py
-WorkingDirectory=/home/pi/visca_bridge
+ExecStart=/usr/bin/python3 /home/pi/visca_bridge_cv620/visca_bridge_cv620.py
+WorkingDirectory=/home/pi/visca_bridge_cv620
 Restart=always
 User=pi
 
 [Install]
 WantedBy=multi-user.target
 ```
-
 Dann aktivieren:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable visca
-sudo systemctl start visca
+sudo systemctl enable visca_cv620
+sudo systemctl start visca_cv620
 ```
-
 Status prüfen:
 ```bash
-sudo systemctl status visca
+sudo systemctl status visca_cv620
 ```
 
 ---
@@ -165,23 +158,22 @@ sudo systemctl status visca
 
 | Problem | Lösung |
 |----------|---------|
-| Kein Zugriff auf `/dev/serial0` | Prüfe `raspi-config` → Serial aktiviert? |
-| Webinterface lädt nicht | Port 8080 bereits belegt? Anderen `WEB_PORT` wählen |
-| CV620 reagiert nicht | TX/RX-Leitungen gekreuzt? Baudrate korrekt (9600)? |
-| Keine Power-Reaktion | Kamera im VISCA-Modus? Prüfe CV620 Menü |
-| Hohe CPU-Last | Andere Prozesse blockieren Serial? Prüfe per `top` |
+| Keine Kamera-Reaktion | TX/RX vertauscht? Baudrate 9600? |
+| Webinterface nicht erreichbar | Port 8080 belegt? |
+| Kein Zugriff auf /dev/serial0 | Serial in `raspi-config` aktivieren |
+| Kamera ignoriert Befehle | CV620 im **VISCA-Modus**, nicht IR oder Pelco-D? |
+| CPU-Last zu hoch | `sleep()` in Loops erhöhen (aktuell 0.01 s) |
 
 ---
 
 ## 📄 Lizenz
 
-MIT License – frei verwendbar, modifizierbar und erweiterbar.
+MIT License – frei verwendbar und anpassbar.
 
 ---
 
 ## ❤️ Credits
 
 Entwickelt für den **Raspberry Pi Zero**,  
-spezifisch getestet mit der **Marshall CV620 PTZ-Kamera**,  
-optimiert für maximale Effizienz bei minimalem Overhead.  
-Kompatibel mit allen VISCA-basierten Steuerungen über RS-232.
+getestet mit der **Marshall CV620 PTZ-Kamera**,  
+mit Fokus auf minimale Latenz, niedrige CPU-Last und maximale Zuverlässigkeit.
