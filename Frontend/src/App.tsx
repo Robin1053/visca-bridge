@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ThemeProvider,
   createTheme,
@@ -7,7 +7,6 @@ import {
   Toolbar,
   Typography,
   Container,
-  Grid,
   Card,
   CardContent,
   CardHeader,
@@ -23,8 +22,9 @@ import {
   ListItem,
   ListItemText,
   Divider,
-  Stack
+  Stack,
 } from '@mui/material';
+import Grid from '@mui/material/GridLegacy';
 import {
   PowerSettingsNew,
   ZoomIn,
@@ -39,7 +39,7 @@ import {
   ArrowBack,
   ArrowForward,
   Home,
-  Stop
+  Stop,
 } from '@mui/icons-material';
 import { type Stats, type PresetCommands, type CommandResponse } from './types';
 
@@ -55,7 +55,7 @@ const darkTheme = createTheme({
 export const App = () => {
   const [stats, setStats] = useState<Stats>({
     run: false, ser: false, cli: 0, tot: 0, i2r: 0, r2i: 0,
-    act: 0, start: 0, port: '', baud: 0, vport: 0, log: []
+    act: 0, start: 0, port: '', baud: 0, vport: 0, log: [],
   });
 
   const [presets, setPresets] = useState<PresetCommands>({});
@@ -64,12 +64,12 @@ export const App = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [currentTab, setCurrentTab] = useState<number>(0);
 
-  // API URL - Raspberry Pi IP eintragen!
-  const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.1.100:8080';
+  // Relativ, damit Dev-Proxy (/api → :8080) oder gleiche Origin funktioniert
+  const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/stats`);
+      const res = await fetch(`${API_BASE}/api/stats`);
       if (res.ok) setStats(await res.json());
     } catch (err) {
       console.error('Stats error:', err);
@@ -78,7 +78,7 @@ export const App = () => {
 
   const fetchPresets = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/presets`);
+      const res = await fetch(`${API_BASE}/api/presets`);
       if (res.ok) setPresets(await res.json());
     } catch (err) {
       console.error('Presets error:', err);
@@ -90,6 +90,7 @@ export const App = () => {
     fetchPresets();
     const interval = setInterval(fetchStats, 2000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sendCommand = async (cmd?: string) => {
@@ -100,15 +101,14 @@ export const App = () => {
     setResponse(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/cmd`, {
+      const res = await fetch(`${API_BASE}/api/cmd`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hex: command })
+        body: JSON.stringify({ hex: command }),
       });
       const data: CommandResponse = await res.json();
       setResponse(data);
       setTimeout(() => setResponse(null), 5000);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (err) {
       setResponse({ ok: false, err: 'Network error' });
     } finally {
@@ -119,12 +119,11 @@ export const App = () => {
   const handlePresetClick = (key: string) => {
     if (presets[key]) {
       setHexCommand(presets[key]);
-      sendCommand(presets[key]);
+      void sendCommand(presets[key]);
     }
   };
 
-  const formatTime = (ts: number) => new Date(ts * 1000).toLocaleTimeString('de-DE');
-  const formatDateTime = (ts: number) => new Date(ts * 1000).toLocaleString('de-DE');
+  const formatDateTime = (ts: number) => (ts ? new Date(ts * 1000).toLocaleString('de-DE') : '-');
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -154,7 +153,7 @@ export const App = () => {
         <Container maxWidth="xl" sx={{ mt: 3, mb: 3 }}>
           {/* Status Cards */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid xs={12} sm={6} md={3}>
               <Card>
                 <CardContent>
                   <Typography color="text.secondary" variant="body2">Bridge Status</Typography>
@@ -165,7 +164,7 @@ export const App = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid xs={12} sm={6} md={3}>
               <Card>
                 <CardContent>
                   <Typography color="text.secondary" variant="body2">Serial Port</Typography>
@@ -177,7 +176,7 @@ export const App = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid xs={12} sm={6} md={3}>
               <Card>
                 <CardContent>
                   <Typography color="text.secondary" variant="body2">Total Connections</Typography>
@@ -185,7 +184,7 @@ export const App = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid xs={12} sm={6} md={3}>
               <Card>
                 <CardContent>
                   <Typography color="text.secondary" variant="body2">VISCA Port</Typography>
@@ -200,21 +199,21 @@ export const App = () => {
             <CardHeader title="Statistics" />
             <CardContent>
               <Grid container spacing={3}>
-                <Grid size={{ xs: 6, md: 3 }}>
+                <Grid xs={6} md={3}>
                   <Typography variant="body2" color="text.secondary">Started</Typography>
                   <Typography variant="body1">{formatDateTime(stats.start)}</Typography>
                 </Grid>
-                <Grid size={{ xs: 6, md: 3 }}>
+                <Grid xs={6} md={3}>
                   <Typography variant="body2" color="text.secondary">IP → RS232</Typography>
                   <Typography variant="h5" color="success.main">{stats.i2r}</Typography>
                 </Grid>
-                <Grid size={{ xs: 6, md: 3 }}>
+                <Grid xs={6} md={3}>
                   <Typography variant="body2" color="text.secondary">RS232 → IP</Typography>
                   <Typography variant="h5" color="secondary.main">{stats.r2i}</Typography>
                 </Grid>
-                <Grid size={{ xs: 6, md: 3 }}>
+                <Grid xs={6} md={3}>
                   <Typography variant="body2" color="text.secondary">Last Activity</Typography>
-                  <Typography variant="body1">{stats.act ? formatDateTime(stats.act) : 'None'}</Typography>
+                  <Typography variant="body1">{formatDateTime(stats.act)}</Typography>
                 </Grid>
               </Grid>
             </CardContent>
@@ -235,18 +234,18 @@ export const App = () => {
             </Box>
 
             <CardContent>
-              {/* Manual Tab */}
+              {/* Manual */}
               {currentTab === 0 && (
                 <Box>
                   <TextField
                     fullWidth
                     label="VISCA Hex Command"
-                    placeholder="e.g. 81 01 04 07 02 FF"
+                    placeholder="z.B. 81 01 04 07 02 FF"
                     value={hexCommand}
                     onChange={(e) => setHexCommand(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && sendCommand()}
+                    onKeyDown={(e) => e.key === 'Enter' && sendCommand()}
                     sx={{ mb: 2 }}
-                    slotProps={{ input: { style: { fontFamily: 'monospace' } } }}
+                    inputProps={{ style: { fontFamily: 'monospace' } }}
                   />
                   <Button
                     variant="contained"
@@ -259,119 +258,119 @@ export const App = () => {
                 </Box>
               )}
 
-              {/* Power Tab */}
+              {/* Power */}
               {currentTab === 1 && (
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="contained" color="success" startIcon={<PowerSettingsNew />}
                       onClick={() => handlePresetClick('power_on')}>Power ON</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="contained" color="error" startIcon={<PowerSettingsNew />}
                       onClick={() => handlePresetClick('power_off')}>Power OFF</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="outlined" startIcon={<Refresh />}
                       onClick={() => handlePresetClick('power_query')}>Query</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="outlined"
                       onClick={() => handlePresetClick('if_clear')}>IF Clear</Button>
                   </Grid>
                 </Grid>
               )}
 
-              {/* Zoom Tab */}
+              {/* Zoom */}
               {currentTab === 2 && (
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 6, sm: 4 }}>
+                  <Grid xs={6} sm={4}>
                     <Button fullWidth variant="contained" startIcon={<ZoomIn />}
                       onClick={() => handlePresetClick('zoom_tele')}>Tele</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 4 }}>
+                  <Grid xs={6} sm={4}>
                     <Button fullWidth variant="contained" startIcon={<ZoomOut />}
                       onClick={() => handlePresetClick('zoom_wide')}>Wide</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 4 }}>
+                  <Grid xs={6} sm={4}>
                     <Button fullWidth variant="contained" color="error" startIcon={<Stop />}
                       onClick={() => handlePresetClick('zoom_stop')}>Stop</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 4 }}>
+                  <Grid xs={6} sm={4}>
                     <Button fullWidth variant="outlined" startIcon={<ZoomIn />}
                       onClick={() => handlePresetClick('zoom_tele_fast')}>Tele Fast</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 4 }}>
+                  <Grid xs={6} sm={4}>
                     <Button fullWidth variant="outlined" startIcon={<ZoomOut />}
                       onClick={() => handlePresetClick('zoom_wide_fast')}>Wide Fast</Button>
                   </Grid>
                 </Grid>
               )}
 
-              {/* Focus Tab */}
+              {/* Focus */}
               {currentTab === 3 && (
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="contained" color="success"
                       onClick={() => handlePresetClick('focus_auto')}>Auto Focus</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="contained"
                       onClick={() => handlePresetClick('focus_manual')}>Manual</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="outlined"
                       onClick={() => handlePresetClick('focus_far')}>Far</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="outlined"
                       onClick={() => handlePresetClick('focus_near')}>Near</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="outlined" color="error" startIcon={<Stop />}
                       onClick={() => handlePresetClick('focus_stop')}>Stop</Button>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid xs={6} sm={3}>
                     <Button fullWidth variant="outlined"
                       onClick={() => handlePresetClick('focus_onepush')}>One Push</Button>
                   </Grid>
                 </Grid>
               )}
 
-              {/* Pan/Tilt Tab */}
+              {/* Pan/Tilt */}
               {currentTab === 4 && (
                 <Box>
                   <Grid container spacing={2} sx={{ mb: 2 }}>
-                    <Grid size={4}></Grid>
-                    <Grid size={4}>
+                    <Grid xs={4}></Grid>
+                    <Grid xs={4}>
                       <Button fullWidth variant="contained" startIcon={<ArrowUpward />}
                         onClick={() => handlePresetClick('pt_up')}>Up</Button>
                     </Grid>
-                    <Grid size={4}></Grid>
-                    <Grid size={4}>
+                    <Grid xs={4}></Grid>
+                    <Grid xs={4}>
                       <Button fullWidth variant="contained" startIcon={<ArrowBack />}
                         onClick={() => handlePresetClick('pt_left')}>Left</Button>
                     </Grid>
-                    <Grid size={4}>
+                    <Grid xs={4}>
                       <Button fullWidth variant="contained" color="error" startIcon={<Stop />}
                         onClick={() => handlePresetClick('pt_stop')}>Stop</Button>
                     </Grid>
-                    <Grid size={4}>
+                    <Grid xs={4}>
                       <Button fullWidth variant="contained" startIcon={<ArrowForward />}
                         onClick={() => handlePresetClick('pt_right')}>Right</Button>
                     </Grid>
-                    <Grid size={4}></Grid>
-                    <Grid size={4}>
+                    <Grid xs={4}></Grid>
+                    <Grid xs={4}>
                       <Button fullWidth variant="contained" startIcon={<ArrowDownward />}
                         onClick={() => handlePresetClick('pt_down')}>Down</Button>
                     </Grid>
-                    <Grid size={4}></Grid>
+                    <Grid xs={4}></Grid>
                   </Grid>
                   <Grid container spacing={2}>
-                    <Grid size={6}>
+                    <Grid xs={6}>
                       <Button fullWidth variant="outlined" startIcon={<Home />}
                         onClick={() => handlePresetClick('pt_home')}>Home</Button>
                     </Grid>
-                    <Grid size={6}>
+                    <Grid xs={6}>
                       <Button fullWidth variant="outlined" startIcon={<Refresh />}
                         onClick={() => handlePresetClick('pt_reset')}>Reset</Button>
                     </Grid>
@@ -379,13 +378,13 @@ export const App = () => {
                 </Box>
               )}
 
-              {/* Presets Tab */}
+              {/* Presets */}
               {currentTab === 5 && (
                 <Box>
                   <Typography variant="h6" gutterBottom>Recall Preset</Typography>
                   <Grid container spacing={2} sx={{ mb: 3 }}>
-                    {[0, 1, 2, 3].map(i => (
-                      <Grid size={{ xs: 6, sm: 3 }} key={i}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <Grid xs={6} sm={3} key={`rec-${i}`}>
                         <Button fullWidth variant="contained"
                           onClick={() => handlePresetClick(`preset_recall_${i}`)}>
                           Preset {i}
@@ -395,8 +394,8 @@ export const App = () => {
                   </Grid>
                   <Typography variant="h6" gutterBottom>Save Preset</Typography>
                   <Grid container spacing={2}>
-                    {[0, 1, 2, 3].map(i => (
-                      <Grid size={{ xs: 6, sm: 3 }} key={i}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <Grid xs={6} sm={3} key={`sav-${i}`}>
                         <Button fullWidth variant="outlined"
                           onClick={() => handlePresetClick(`preset_set_${i}`)}>
                           Save {i}
@@ -407,51 +406,51 @@ export const App = () => {
                 </Box>
               )}
 
-              {/* Picture Tab */}
+              {/* Picture */}
               {currentTab === 6 && (
                 <Box>
                   <Typography variant="h6" gutterBottom>White Balance</Typography>
                   <Grid container spacing={2} sx={{ mb: 3 }}>
-                    <Grid size={{ xs: 6, sm: 3 }}>
+                    <Grid xs={6} sm={3}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('wb_auto')}>Auto</Button>
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 3 }}>
+                    <Grid xs={6} sm={3}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('wb_indoor')}>Indoor</Button>
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 3 }}>
+                    <Grid xs={6} sm={3}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('wb_outdoor')}>Outdoor</Button>
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 3 }}>
+                    <Grid xs={6} sm={3}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('wb_manual')}>Manual</Button>
                     </Grid>
                   </Grid>
                   <Typography variant="h6" gutterBottom>Effects</Typography>
                   <Grid container spacing={2}>
-                    <Grid size={{ xs: 6, sm: 4 }}>
+                    <Grid xs={6} sm={4}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('backlight_on')}>Backlight ON</Button>
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 4 }}>
+                    <Grid xs={6} sm={4}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('backlight_off')}>Backlight OFF</Button>
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 4 }}>
+                    <Grid xs={6} sm={4}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('mirror_on')}>Mirror ON</Button>
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 4 }}>
+                    <Grid xs={6} sm={4}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('mirror_off')}>Mirror OFF</Button>
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 4 }}>
+                    <Grid xs={6} sm={4}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('flip_on')}>Flip ON</Button>
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 4 }}>
+                    <Grid xs={6} sm={4}>
                       <Button fullWidth variant="outlined"
                         onClick={() => handlePresetClick('flip_off')}>Flip OFF</Button>
                     </Grid>
@@ -459,15 +458,13 @@ export const App = () => {
                 </Box>
               )}
 
-              {/* Response Alert */}
               {response && (
-                <Alert severity={response.ok ? 'success' : 'error'} sx={{ mt: 2 }}>
-                  {response.ok ? (
-                    <>Success! {response.resp && `Response: ${response.resp}`}</>
-                  ) : (
-                    <>Error: {response.err}</>
-                  )}
-                </Alert>
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Alert severity={response.ok ? 'success' : 'error'}>
+                    {response.ok ? `Command sent (${'len' in response ? response.len : '?' } bytes).` : response.err || 'Error'}
+                  </Alert>
+                </>
               )}
             </CardContent>
           </Card>
@@ -476,35 +473,16 @@ export const App = () => {
           <Card sx={{ mt: 3 }}>
             <CardHeader title="Event Log" />
             <CardContent>
-              <Paper sx={{ maxHeight: 400, overflow: 'auto', bgcolor: 'background.default' }}>
+              <Paper sx={{ maxHeight: 400, overflow: 'auto', bgcolor: 'background.default', p: 1 }}>
                 <List dense>
-                  {stats.log.length > 0 ? (
-                    stats.log.map((entry, idx) => (
-                      <React.Fragment key={idx}>
-                        <ListItem>
-                          <ListItemText
-                            primary={entry.m}
-                            secondary={
-                              <Box component="span" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                                {formatTime(entry.t)} -
-                                <Chip
-                                  label={entry.l}
-                                  size="small"
-                                  color={entry.l === 'E' ? 'error' : 'success'}
-                                  sx={{ ml: 1, height: 16 }}
-                                />
-                              </Box>
-                            }
-                          />
-                        </ListItem>
-                        {idx < stats.log.length - 1 && <Divider />}
-                      </React.Fragment>
-                    ))
-                  ) : (
-                    <ListItem>
-                      <ListItemText primary="No log entries" secondary="Waiting for events..." />
+                  {stats.log.map((line, idx) => (
+                    <ListItem key={idx} disableGutters>
+                      <ListItemText
+                        primaryTypographyProps={{ fontFamily: 'monospace', fontSize: 12 }}
+                        primary={line}
+                      />
                     </ListItem>
-                  )}
+                  ))}
                 </List>
               </Paper>
             </CardContent>

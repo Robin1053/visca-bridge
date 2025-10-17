@@ -313,7 +313,19 @@ class WebHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+def get_html():
+    """Minimal HTML für Fallback"""
+    return b'<html><body><h1>VISCA Bridge Running</h1><p>Use React Frontend</p></body></html>'
 
+
+def run_web():
+    """Web Server starten"""
+    server = HTTPServer(('0.0.0.0', WEB_PORT), WebHandler)
+    log('I', f'Web: http://0.0.0.0:{WEB_PORT}')
+    server.serve_forever()
+
+
+    
 def main():
     """Hauptfunktion"""
     global running
