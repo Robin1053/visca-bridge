@@ -301,23 +301,17 @@ class WebHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
-def get_html():
-    global HTML_CACHE
-    if HTML_CACHE is None:
-        try:
-            path = os.path.join(os.path.dirname(__file__), 'web', 'index.html')
-            with open(path, 'r', encoding='utf-8') as f:
-                HTML_CACHE = f.read()
-        except Exception as e:
-            log('E', f'HTML konnte nicht geladen werden: {e}')
-            HTML_CACHE = "<h1>Fehler beim Laden des Web-UI</h1>"
-    return HTML_CACHE
+class WebHandler(BaseHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        BaseHTTPRequestHandler.end_headers(self)
+    
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.end_headers()
 
-def run_web():
-    """Web Server starten"""
-    server = HTTPServer(('0.0.0.0', WEB_PORT), WebHandler)
-    log('I', f'Web: http://0.0.0.0:{WEB_PORT}')
-    server.serve_forever()
 
 
 def main():
