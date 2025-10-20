@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+
 import {
   ThemeProvider,
   createTheme,
@@ -222,7 +223,7 @@ export const App = () => {
           {/* Control Tabs */}
           <Card>
             <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-              <Tabs value={currentTab} onChange={(e, v) => setCurrentTab(v)} variant="scrollable">
+              <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)} variant="scrollable">
                 <Tab label="Manual" />
                 <Tab label="Power" />
                 <Tab label="Zoom" />
@@ -462,27 +463,35 @@ export const App = () => {
                 <>
                   <Divider sx={{ my: 2 }} />
                   <Alert severity={response.ok ? 'success' : 'error'}>
-                    {response.ok ? `Command sent (${'len' in response ? response.len : '?' } bytes).` : response.err || 'Error'}
+                    {response.ok ? `Command sent (${'len' in response ? response.len : '?'} bytes).` : response.err || 'Error'}
                   </Alert>
                 </>
               )}
             </CardContent>
           </Card>
-
           {/* Event Log */}
           <Card sx={{ mt: 3 }}>
             <CardHeader title="Event Log" />
             <CardContent>
               <Paper sx={{ maxHeight: 400, overflow: 'auto', bgcolor: 'background.default', p: 1 }}>
                 <List dense>
-                  {stats.log.map((line, idx) => (
-                    <ListItem key={idx} disableGutters>
+                  {stats.log.length > 0 ? (
+                    stats.log.map((entry, idx) => (
+                      <ListItem key={idx} disableGutters>
+                        <ListItemText
+                          primaryTypographyProps={{ fontFamily: 'monospace', fontSize: 12 }}
+                          primary={`${new Date(entry.t * 1000).toLocaleTimeString('de-DE')} [${entry.l}] ${entry.m}`}
+                        />
+                      </ListItem>
+                    ))
+                  ) : (
+                    <ListItem disableGutters>
                       <ListItemText
-                        primaryTypographyProps={{ fontFamily: 'monospace', fontSize: 12 }}
-                        primary={line}
+                        primary="No log entries yet"
+                        secondary="Waiting for events..."
                       />
                     </ListItem>
-                  ))}
+                  )}
                 </List>
               </Paper>
             </CardContent>
