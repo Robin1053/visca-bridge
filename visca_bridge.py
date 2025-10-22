@@ -76,11 +76,24 @@ VISCA_PRESETS = {
     'preset_recall_1': '81 01 04 3F 02 01 FF',
     'preset_recall_2': '81 01 04 3F 02 02 FF',
     'preset_recall_3': '81 01 04 3F 02 03 FF',
+    'preset_recall_4': '81 01 04 3F 02 04 FF',
+    'preset_recall_5': '81 01 04 3F 02 05 FF',
+    'preset_recall_6': '81 01 04 3F 02 06 FF',
+    'preset_recall_7': '81 01 04 3F 02 07 FF',
+    'preset_recall_8': '81 01 04 3F 02 08 FF',
+    'preset_recall_9': '81 01 04 3F 02 09 FF',
+
     'preset_set_0': '81 01 04 3F 01 00 FF',
     'preset_set_1': '81 01 04 3F 01 01 FF',
     'preset_set_2': '81 01 04 3F 01 02 FF',
     'preset_set_3': '81 01 04 3F 01 03 FF',
-    
+    'preset_set_4': '81 01 04 3F 01 04 FF',
+    'preset_set_5': '81 01 04 3F 01 05 FF',
+    'preset_set_6': '81 01 04 3F 01 06 FF',
+    'preset_set_7': '81 01 04 3F 01 07 FF',
+    'preset_set_8': '81 01 04 3F 01 08 FF',
+    'preset_set_9': '81 01 04 3F 01 09 FF',
+
     # Picture
     'backlight_on': '81 01 04 33 02 FF',
     'backlight_off': '81 01 04 33 03 FF',
