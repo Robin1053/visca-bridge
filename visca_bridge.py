@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
 VISCA Bridge - Optimiert für Raspberry Pi Zero mit CV620 Presets
+FIXED VERSION - Timeout und Fehlerbehandlung verbessert
 """
 
-import os
 import socket
 import serial
 import select
-import sys
 import json
 from time import time, sleep
 from collections import deque
@@ -16,16 +15,15 @@ from threading import Thread, Lock
 from urllib.parse import urlparse
 
 
-HTML_CACHE = None
-
-
 # Konfiguration
 VISCA_IP_HOST = '0.0.0.0'
-VISCA_IP_PORT = 52381
-WEB_PORT = 8080
-SERIAL_PORT = '/dev/serial0'
+VISCA_IP_PORT = 1259  # Ändere zu 52382 falls Port belegt
+WEB_PORT = 8081
+SERIAL_PORT = '/dev/ttyUSB0'
 SERIAL_BAUDRATE = 9600
-MAX_LOG_ENTRIES = 50
+SERIAL_TIMEOUT = 1.0  # Erhöht von 0.1 auf 1.0 Sekunde
+MAX_LOG_ENTRIES = 100
+RESPONSE_WAIT = 0.3  # Zeit auf Kamera-Antwort warten
 
 # VISCA Command Presets für CV620
 VISCA_PRESETS = {
@@ -82,7 +80,6 @@ VISCA_PRESETS = {
     'preset_recall_7': '81 01 04 3F 02 07 FF',
     'preset_recall_8': '81 01 04 3F 02 08 FF',
     'preset_recall_9': '81 01 04 3F 02 09 FF',
-
     'preset_set_0': '81 01 04 3F 01 00 FF',
     'preset_set_1': '81 01 04 3F 01 01 FF',
     'preset_set_2': '81 01 04 3F 01 02 FF',
@@ -93,7 +90,7 @@ VISCA_PRESETS = {
     'preset_set_7': '81 01 04 3F 01 07 FF',
     'preset_set_8': '81 01 04 3F 01 08 FF',
     'preset_set_9': '81 01 04 3F 01 09 FF',
-
+    
     # Picture
     'backlight_on': '81 01 04 33 02 FF',
     'backlight_off': '81 01 04 33 03 FF',
@@ -126,23 +123,30 @@ running = True
 
 
 def log(level, msg):
-    """Minimales Logging"""
+    """Logging mit Thread-Safety"""
     with log_lock:
         entry = {'t': int(time()), 'l': level[0], 'm': msg}
         log_queue.appendleft(entry)
+        timestamp = time()
         print(f"[{level}] {msg}")
 
 
 def setup_serial():
-    """Serial Port öffnen"""
+    """Serial Port öffnen mit verbesserter Fehlerbehandlung"""
     global serial_conn
     try:
         serial_conn = serial.Serial(
             port=SERIAL_PORT,
             baudrate=SERIAL_BAUDRATE,
-            timeout=0.1,
-            write_timeout=0.1
+            timeout=SERIAL_TIMEOUT,
+            write_timeout=SERIAL_TIMEOUT,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE
         )
+        # Buffer leeren
+        serial_conn.reset_input_buffer()
+        serial_conn.reset_output_buffer()
         log('I', f'Serial: {SERIAL_PORT}@{SERIAL_BAUDRATE}')
         return True
     except Exception as e:
@@ -156,14 +160,45 @@ def setup_visca_server():
     try:
         visca_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         visca_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        visca_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         visca_socket.setblocking(0)
+        
+        # Warte kurz falls Port noch im TIME_WAIT
+        import time
+        time.sleep(1)
+        
         visca_socket.bind((VISCA_IP_HOST, VISCA_IP_PORT))
-        visca_socket.listen(3)
+        visca_socket.listen(5)
         log('I', f'VISCA: {VISCA_IP_HOST}:{VISCA_IP_PORT}')
         return True
     except Exception as e:
         log('E', f'VISCA Fehler: {e}')
+        log('E', f'Versuche Port mit: sudo lsof -i :{VISCA_IP_PORT}')
         return False
+
+
+def read_serial_response(timeout=RESPONSE_WAIT):
+    """Serial Antwort mit Timeout lesen"""
+    if not serial_conn or not serial_conn.is_open:
+        return None
+    
+    start = time()
+    response = b''
+    
+    while (time() - start) < timeout:
+        try:
+            if serial_conn.in_waiting > 0:
+                chunk = serial_conn.read(serial_conn.in_waiting)
+                response += chunk
+                # VISCA Antwort endet immer mit FF
+                if chunk and chunk[-1] == 0xFF:
+                    break
+            sleep(0.01)
+        except Exception as e:
+            log('W', f'Serial read error: {e}')
+            break
+    
+    return response if response else None
 
 
 def handle_visca():
@@ -173,42 +208,60 @@ def handle_visca():
     readable = [visca_socket] + clients
     try:
         ready, _, _ = select.select(readable, [], [], 0.01)
-    except:
+    except Exception as e:
+        log('W', f'Select error: {e}')
         return
     
     for sock in ready:
         if sock is visca_socket:
+            # Neue Verbindung
             try:
                 client, addr = visca_socket.accept()
                 client.setblocking(0)
                 clients.append(client)
                 stats['clients'] = len(clients)
                 stats['total_conn'] += 1
-                log('I', f'Client: {addr[0]}')
-            except:
-                pass
+                log('I', f'Client connected: {addr[0]}:{addr[1]}')
+            except Exception as e:
+                log('W', f'Accept error: {e}')
         else:
+            # Daten von Client
             try:
                 data = sock.recv(1024)
                 if data:
+                    # An Serial weiterleiten
                     if serial_conn and serial_conn.is_open:
-                        serial_conn.write(data)
-                        stats['ip_to_rs232'] += 1
-                        stats['last_activity'] = int(time())
-                        
-                        sleep(0.05)
-                        if serial_conn.in_waiting > 0:
-                            resp = serial_conn.read(serial_conn.in_waiting)
-                            sock.send(resp)
-                            stats['rs232_to_ip'] += 1
+                        try:
+                            serial_conn.write(data)
+                            serial_conn.flush()
+                            stats['ip_to_rs232'] += 1
+                            stats['last_activity'] = int(time())
+                            log('D', f'IP->RS232: {data.hex()}')
+                            
+                            # Auf Antwort warten
+                            response = read_serial_response()
+                            if response:
+                                try:
+                                    sock.send(response)
+                                    stats['rs232_to_ip'] += 1
+                                    log('D', f'RS232->IP: {response.hex()}')
+                                except:
+                                    pass
+                        except Exception as e:
+                            log('E', f'Serial write error: {e}')
                 else:
+                    # Client disconnected
                     clients.remove(sock)
                     sock.close()
                     stats['clients'] = len(clients)
-            except:
+                    log('I', 'Client disconnected')
+            except Exception as e:
                 if sock in clients:
                     clients.remove(sock)
-                    sock.close()
+                    try:
+                        sock.close()
+                    except:
+                        pass
                     stats['clients'] = len(clients)
 
 
@@ -218,117 +271,187 @@ def visca_loop():
     log('I', 'VISCA Loop gestartet')
     
     while running:
-        handle_visca()
-        
-        if serial_conn and serial_conn.is_open:
-            try:
-                if serial_conn.in_waiting > 0:
-                    data = serial_conn.read(serial_conn.in_waiting)
-                    for client in clients[:]:
-                        try:
-                            client.send(data)
-                        except:
-                            clients.remove(client)
-                            client.close()
-            except:
-                pass
-        
-        sleep(0.01)
+        try:
+            handle_visca()
+            
+            # Unaufgeforderte Kamera-Nachrichten an alle Clients
+            if serial_conn and serial_conn.is_open:
+                try:
+                    if serial_conn.in_waiting > 0:
+                        data = serial_conn.read(serial_conn.in_waiting)
+                        log('D', f'RS232 unsolicited: {data.hex()}')
+                        for client in clients[:]:
+                            try:
+                                client.send(data)
+                                stats['rs232_to_ip'] += 1
+                            except:
+                                clients.remove(client)
+                                try:
+                                    client.close()
+                                except:
+                                    pass
+                except:
+                    pass
+            
+            sleep(0.01)
+        except Exception as e:
+            log('E', f'VISCA loop error: {e}')
+            sleep(0.1)
 
 
 def send_command(hex_str):
-    """VISCA Befehl senden"""
+    """VISCA Befehl senden mit verbesserter Fehlerbehandlung"""
     try:
+        # Hex String in Bytes konvertieren
         data = bytes.fromhex(hex_str.replace(' ', ''))
-        if serial_conn and serial_conn.is_open:
-            serial_conn.write(data)
-            stats['ip_to_rs232'] += 1
-            stats['last_activity'] = int(time())
-            
-            sleep(0.1)
-            resp = None
-            if serial_conn.in_waiting > 0:
-                resp = serial_conn.read(serial_conn.in_waiting).hex()
-            
-            log('I', f'CMD: {hex_str[:30]}...')
-            return {'ok': True, 'resp': resp}
-        return {'ok': False, 'err': 'Serial nicht bereit'}
+        
+        if not serial_conn or not serial_conn.is_open:
+            return {'ok': False, 'err': 'Serial port not ready'}
+        
+        # Senden
+        serial_conn.write(data)
+        serial_conn.flush()
+        stats['ip_to_rs232'] += 1
+        stats['last_activity'] = int(time())
+        log('I', f'CMD sent: {hex_str}')
+        
+        # Auf Antwort warten
+        response = read_serial_response()
+        
+        result = {
+            'ok': True,
+            'len': len(data),
+            'resp': response.hex() if response else None
+        }
+        
+        if response:
+            log('I', f'CMD response: {response.hex()}')
+        else:
+            log('W', 'No response from camera')
+        
+        return result
+        
     except Exception as e:
         log('E', f'CMD Error: {str(e)}')
         return {'ok': False, 'err': str(e)}
 
 
 class WebHandler(BaseHTTPRequestHandler):
+    """Web Server Handler mit CORS Support"""
+    
     def log_message(self, *args):
+        """Disable default logging"""
         pass
     
-    def do_GET(self):
-        path = urlparse(self.path).path
-        
-        if path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(get_html())
-        elif path == '/api/stats':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            data = {
-                'run': running,
-                'ser': serial_conn.is_open if serial_conn else False,
-                'cli': stats['clients'],
-                'tot': stats['total_conn'],
-                'i2r': stats['ip_to_rs232'],
-                'r2i': stats['rs232_to_ip'],
-                'act': stats['last_activity'],
-                'start': stats['start_time'],
-                'port': SERIAL_PORT,
-                'baud': SERIAL_BAUDRATE,
-                'vport': VISCA_IP_PORT,
-                'log': list(log_queue)[:20]
-            }
-            self.wfile.write(json.dumps(data).encode())
-        elif path == '/api/presets':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(VISCA_PRESETS).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def do_POST(self):
-        if self.path == '/api/cmd':
-            length = int(self.headers.get('Content-Length', 0))
-            data = json.loads(self.rfile.read(length))
-            result = send_command(data.get('hex', ''))
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(result).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-
-class WebHandler(BaseHTTPRequestHandler):
     def end_headers(self):
+        """CORS Headers hinzufügen"""
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         BaseHTTPRequestHandler.end_headers(self)
     
     def do_OPTIONS(self):
+        """CORS Preflight"""
         self.send_response(200)
         self.end_headers()
-
-
-def get_html():
-    """Minimal HTML für Fallback"""
-    return b'<html><body><h1>VISCA Bridge Running</h1><p>Use React Frontend</p></body></html>'
+    
+    def do_GET(self):
+        """GET Requests"""
+        path = urlparse(self.path).path
+        
+        if path == '/':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            html = b'''
+            <html>
+            <head><title>VISCA Bridge</title></head>
+            <body>
+                <h1>VISCA Bridge Running</h1>
+                <p>Use React Frontend or API:</p>
+                <ul>
+                    <li>GET /api/stats - Status</li>
+                    <li>GET /api/presets - Commands</li>
+                    <li>POST /api/cmd - Send command</li>
+                </ul>
+            </body>
+            </html>
+            '''
+            self.wfile.write(html)
+            
+        elif path == '/api/stats':
+            try:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                
+                with log_lock:
+                    log_list = [dict(entry) for entry in list(log_queue)[:50]]
+                
+                data = {
+                    'run': bool(running),
+                    'ser': bool(serial_conn and serial_conn.is_open),
+                    'cli': int(stats['clients']),
+                    'tot': int(stats['total_conn']),
+                    'i2r': int(stats['ip_to_rs232']),
+                    'r2i': int(stats['rs232_to_ip']),
+                    'act': int(stats['last_activity']),
+                    'start': int(stats['start_time']),
+                    'port': str(SERIAL_PORT),
+                    'baud': int(SERIAL_BAUDRATE),
+                    'vport': int(VISCA_IP_PORT),
+                    'log': log_list
+                }
+                
+                json_str = json.dumps(data, ensure_ascii=False)
+                self.wfile.write(json_str.encode('utf-8'))
+            except Exception as e:
+                log('E', f'Stats API error: {e}')
+                self.send_error(500, str(e))
+            
+        elif path == '/api/presets':
+            try:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                json_str = json.dumps(VISCA_PRESETS, ensure_ascii=False)
+                self.wfile.write(json_str.encode('utf-8'))
+            except Exception as e:
+                log('E', f'Presets API error: {e}')
+                self.send_error(500, str(e))
+            
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def do_POST(self):
+        """POST Requests"""
+        if self.path == '/api/cmd':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length)
+                data = json.loads(body)
+                
+                hex_command = data.get('hex', '')
+                if not hex_command:
+                    result = {'ok': False, 'err': 'No hex command provided'}
+                else:
+                    result = send_command(hex_command)
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode())
+                
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error = {'ok': False, 'err': str(e)}
+                self.wfile.write(json.dumps(error).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
 
 
 def run_web():
@@ -338,23 +461,24 @@ def run_web():
     server.serve_forever()
 
 
-    
 def main():
     """Hauptfunktion"""
     global running
     
     print("=" * 40)
-    print("VISCA Bridge - CV620 Edition")
+    print("VISCA Bridge - CV620 Edition (FIXED)")
     print("=" * 40)
     
     if not setup_serial():
-        print("FEHLER: Serial Port")
+        print("FEHLER: Serial Port kann nicht geöffnet werden")
+        print(f"Prüfe: sudo chmod 666 {SERIAL_PORT}")
         return
     
     if not setup_visca_server():
-        print("FEHLER: VISCA Server")
+        print("FEHLER: VISCA Server kann nicht gestartet werden")
         return
     
+    # VISCA Thread starten
     visca_thread = Thread(target=visca_loop, daemon=True)
     visca_thread.start()
     
@@ -368,7 +492,10 @@ def main():
         if visca_socket:
             visca_socket.close()
         for client in clients:
-            client.close()
+            try:
+                client.close()
+            except:
+                pass
 
 
 if __name__ == "__main__":

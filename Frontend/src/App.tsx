@@ -66,7 +66,7 @@ export const App = () => {
   const [currentTab, setCurrentTab] = useState<number>(0);
 
   // Relativ, damit Dev-Proxy (/api → :8080) oder gleiche Origin funktioniert
-  const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
+  const API_BASE = (import.meta.env.API as string | undefined)?.replace(/\/$/, '') || '';
 
   const fetchStats = async () => {
     try {
