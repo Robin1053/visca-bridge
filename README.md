@@ -145,6 +145,4 @@ MIT License — siehe `LICENSE` (sofern vorhanden).
 
 ---
 
-Wenn du möchtest, kann ich die `README` weiter anreichern (z. B. detaillierte API-Dokumentation, Screenshots vom Frontend oder eine Beispielkonfiguration für `Frontend/.env`).
-
 Datum der Aktualisierung: 2025-11-12
