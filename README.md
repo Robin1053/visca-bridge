@@ -125,14 +125,6 @@ sudo systemctl enable visca-bridge
 sudo systemctl start visca-bridge
 ```
 
-## Konflikte / Hinweis zur Repo-Historie
-
-Während jüngster Wartungsarbeiten wurden lokale und entfernte Branch-Änderungen zusammengeführt; ein Backup-Branch `backup-local-20251112-1822` wurde lokal angelegt, bevor Konflikte aufgelöst wurden. Falls du vermutest, dass Änderungen fehlen, kannst du diesen Branch prüfen:
-
-```powershell
-git checkout backup-local-20251112-1822 -- visca_bridge.py
-```
-
 ## Fehlerbehebung & Tipps
 
 - Keine Kamera-Reaktion: TX/RX vertauscht? Baudrate prüfen (Standard 9600).
@@ -141,10 +133,8 @@ git checkout backup-local-20251112-1822 -- visca_bridge.py
 
 ## Lizenz
 
-MIT License — siehe `LICENSE` (sofern vorhanden).
+MIT License — siehe `LICENSE`.
 
 ---
 
-Wenn du möchtest, kann ich die `README` weiter anreichern (z. B. detaillierte API-Dokumentation, Screenshots vom Frontend oder eine Beispielkonfiguration für `Frontend/.env`).
-
-Datum der Aktualisierung: 2025-11-12
+Datum der Aktualisierung: 07/01/26
