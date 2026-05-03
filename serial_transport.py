@@ -49,3 +49,6 @@ class SerialViscaTransport:
         self.running = False
         if self.serial:
             self.serial.close()
+
+    def send_raw(self, data: bytes):
+        self.send(data)
