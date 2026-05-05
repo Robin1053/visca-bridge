@@ -16,15 +16,15 @@ bin/
 !**/src/main/**/bin/
 !**/src/test/**/bin/
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
+# Maven
+/target/
 
-### VS Code ###
-.vscode/
+# Java
+*.class
+
+# IntelliJ
+.idea/
+*.iml
 
 ### Mac OS ###
 .DS_Store

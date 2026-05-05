@@ -4,7 +4,7 @@ import java.io.InputStream;
 import java.net.Socket;
 
 public class ClientHandler extends Thread {
-
+    private final java.io.ByteArrayOutputStream bufferStream = new java.io.ByteArrayOutputStream();
     private final Socket client;
 
     public ClientHandler(Socket client) {
@@ -34,12 +34,31 @@ public class ClientHandler extends Thread {
     }
 
     private void onData(byte[] buffer, int len) {
-        System.out.print("Received: ");
 
+        // Debug Ausgabe
+        System.out.print("Received: ");
         for (int i = 0; i < len; i++) {
             System.out.printf("%02X ", buffer[i]);
         }
-
         System.out.println();
+
+        // VISCA Parsing
+        for (int i = 0; i < len; i++) {
+            byte b = buffer[i];
+            bufferStream.write(b);
+
+            if (b == (byte) 0xFF) {
+                byte[] message = bufferStream.toByteArray();
+
+                System.out.print("VISCA: ");
+                for (byte m : message) {
+                    System.out.printf("%02X ", m);
+                }
+                System.out.println();
+
+                bufferStream.reset();
+            }
+        }
     }
+
 }

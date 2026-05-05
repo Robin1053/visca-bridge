@@ -15,7 +15,7 @@ public class Main {
 
         ViscaIpServer server = new ViscaIpServer(port);
 
-        
+
         server.start();
     }
 }
