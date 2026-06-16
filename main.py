@@ -6,104 +6,53 @@ FIXED VERSION - Timeout und Fehlerbehandlung verbessert
 
 import socket
 import serial
+from serial.tools import list_ports
 import select
 import json
+import os
+import sys
+from pathlib import Path
 from time import time, sleep
 from collections import deque
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread, Lock
 from urllib.parse import urlparse
 
 
 # Konfiguration
 VISCA_IP_HOST = '0.0.0.0'
-VISCA_IP_PORT = 1259  # Ändere zu 52382 falls Port belegt
-WEB_PORT = 8081
-SERIAL_PORT = '/dev/ttyUSB0'
-SERIAL_BAUDRATE = 9600
-SERIAL_TIMEOUT = 1.0  # Erhöht von 0.1 auf 1.0 Sekunde
-MAX_LOG_ENTRIES = 100
-RESPONSE_WAIT = 0.3  # Zeit auf Kamera-Antwort warten
+VISCA_IP_PORT = 1259
 
-# VISCA Command Presets für CV620
-VISCA_PRESETS = {
-    # Power
-    'power_on': '81 01 04 00 02 FF',
-    'power_off': '81 01 04 00 03 FF',
-    'power_query': '81 09 04 00 FF',
-    
-    # Zoom
-    'zoom_stop': '81 01 04 07 00 FF',
-    'zoom_tele': '81 01 04 07 02 FF',
-    'zoom_wide': '81 01 04 07 03 FF',
-    'zoom_tele_fast': '81 01 04 07 27 FF',
-    'zoom_wide_fast': '81 01 04 07 37 FF',
-    
-    # Focus
-    'focus_stop': '81 01 04 08 00 FF',
-    'focus_far': '81 01 04 08 02 FF',
-    'focus_near': '81 01 04 08 03 FF',
-    'focus_auto': '81 01 04 38 02 FF',
-    'focus_manual': '81 01 04 38 03 FF',
-    'focus_onepush': '81 01 04 18 01 FF',
-    
-    # White Balance
-    'wb_auto': '81 01 04 35 00 FF',
-    'wb_indoor': '81 01 04 35 01 FF',
-    'wb_outdoor': '81 01 04 35 02 FF',
-    'wb_onepush': '81 01 04 35 03 FF',
-    'wb_manual': '81 01 04 35 05 FF',
-    
-    # Exposure
-    'ae_full_auto': '81 01 04 39 00 FF',
-    'ae_manual': '81 01 04 39 03 FF',
-    'ae_shutter_priority': '81 01 04 39 0A FF',
-    'ae_iris_priority': '81 01 04 39 0B FF',
-    
-    # Pan/Tilt
-    'pt_home': '81 01 06 04 FF',
-    'pt_reset': '81 01 06 05 FF',
-    'pt_stop': '81 01 06 01 18 18 03 03 FF',
-    'pt_up': '81 01 06 01 0C 0C 03 01 FF',
-    'pt_down': '81 01 06 01 0C 0C 03 02 FF',
-    'pt_left': '81 01 06 01 0C 0C 01 03 FF',
-    'pt_right': '81 01 06 01 0C 0C 02 03 FF',
-    
-    # Memory/Preset
-    'preset_recall_0': '81 01 04 3F 02 00 FF',
-    'preset_recall_1': '81 01 04 3F 02 01 FF',
-    'preset_recall_2': '81 01 04 3F 02 02 FF',
-    'preset_recall_3': '81 01 04 3F 02 03 FF',
-    'preset_recall_4': '81 01 04 3F 02 04 FF',
-    'preset_recall_5': '81 01 04 3F 02 05 FF',
-    'preset_recall_6': '81 01 04 3F 02 06 FF',
-    'preset_recall_7': '81 01 04 3F 02 07 FF',
-    'preset_recall_8': '81 01 04 3F 02 08 FF',
-    'preset_recall_9': '81 01 04 3F 02 09 FF',
-    'preset_set_0': '81 01 04 3F 01 00 FF',
-    'preset_set_1': '81 01 04 3F 01 01 FF',
-    'preset_set_2': '81 01 04 3F 01 02 FF',
-    'preset_set_3': '81 01 04 3F 01 03 FF',
-    'preset_set_4': '81 01 04 3F 01 04 FF',
-    'preset_set_5': '81 01 04 3F 01 05 FF',
-    'preset_set_6': '81 01 04 3F 01 06 FF',
-    'preset_set_7': '81 01 04 3F 01 07 FF',
-    'preset_set_8': '81 01 04 3F 01 08 FF',
-    'preset_set_9': '81 01 04 3F 01 09 FF',
-    
-    # Picture
-    'backlight_on': '81 01 04 33 02 FF',
-    'backlight_off': '81 01 04 33 03 FF',
-    'mirror_on': '81 01 04 61 02 FF',
-    'mirror_off': '81 01 04 61 03 FF',
-    'flip_on': '81 01 04 66 02 FF',
-    'flip_off': '81 01 04 66 03 FF',
-    
-    # System
-    'menu_on': '81 01 06 06 02 FF',
-    'menu_off': '81 01 06 06 03 FF',
-    'if_clear': '88 01 00 01 FF',
-}
+
+def load_env_file():
+    """Einfache .env-Datei aus dem Projektverzeichnis laden."""
+    env_path = Path(__file__).with_name('.env')
+    if not env_path.exists():
+        return
+
+    with env_path.open('r', encoding='utf-8') as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip()
+
+            if value and value[0] == value[-1] and value[0] in ('"', "'"):
+                value = value[1:-1]
+
+            if key:
+                os.environ.setdefault(key, value)
+
+
+load_env_file()
+
+SERIAL_PORT = os.getenv('VISCA_SERIAL_PORT', '/dev/ttyUSB0')
+SERIAL_BAUDRATE = int(os.getenv('VISCA_SERIAL_BAUDRATE', '9600'))
+SERIAL_TIMEOUT = 1.0
+MAX_LOG_ENTRIES = 100
+RESPONSE_WAIT = 0.3
 
 # Globale Variablen
 serial_conn = None
@@ -131,12 +80,56 @@ def log(level, msg):
         print(f"[{level}] {msg}")
 
 
+def list_serial_ports():
+    """Verfügbare serielle Geräte sammeln."""
+    return list(list_ports.comports())
+
+
+def choose_serial_port(default_port=SERIAL_PORT):
+    """Serielles Gerät interaktiv auswählen, wenn mehrere verfügbar sind."""
+    configured_port = os.getenv('VISCA_SERIAL_PORT')
+    if configured_port:
+        return configured_port
+
+    ports = list_serial_ports()
+
+    if not ports:
+        log('W', 'Keine seriellen Geräte gefunden, verwende Standardport')
+        return default_port
+
+    print('\nVerfügbare serielle Geräte:')
+    for index, port in enumerate(ports, start=1):
+        description = port.description or 'unbekannt'
+        manufacturer = f' | {port.manufacturer}' if port.manufacturer else ''
+        print(f"  {index}) {port.device} - {description}{manufacturer}")
+
+    if not sys.stdin.isatty():
+        print(f"Kein interaktives Terminal, verwende Standardport: {default_port}")
+        return default_port
+
+    while True:
+        try:
+            choice = input(f"\nGerät wählen [1-{len(ports)}] oder Enter für {default_port}: ").strip()
+            if choice == '':
+                return default_port
+
+            selected_index = int(choice) - 1
+            if 0 <= selected_index < len(ports):
+                return ports[selected_index].device
+
+            print('Ungültige Auswahl.')
+        except ValueError:
+            print('Bitte eine Zahl eingeben.')
+
+
 def setup_serial():
     """Serial Port öffnen mit verbesserter Fehlerbehandlung"""
     global serial_conn
+    port_to_use = choose_serial_port()
+
     try:
         serial_conn = serial.Serial(
-            port=SERIAL_PORT,
+            port=port_to_use,
             baudrate=SERIAL_BAUDRATE,
             timeout=SERIAL_TIMEOUT,
             write_timeout=SERIAL_TIMEOUT,
@@ -147,7 +140,7 @@ def setup_serial():
         # Buffer leeren
         serial_conn.reset_input_buffer()
         serial_conn.reset_output_buffer()
-        log('I', f'Serial: {SERIAL_PORT}@{SERIAL_BAUDRATE}')
+        log('I', f'Serial: {port_to_use}@{SERIAL_BAUDRATE}')
         return True
     except Exception as e:
         log('E', f'Serial Fehler: {e}')
@@ -336,130 +329,6 @@ def send_command(hex_str):
         return {'ok': False, 'err': str(e)}
 
 
-class WebHandler(BaseHTTPRequestHandler):
-    """Web Server Handler mit CORS Support"""
-    
-    def log_message(self, *args):
-        """Disable default logging"""
-        pass
-    
-    def end_headers(self):
-        """CORS Headers hinzufügen"""
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        BaseHTTPRequestHandler.end_headers(self)
-    
-    def do_OPTIONS(self):
-        """CORS Preflight"""
-        self.send_response(200)
-        self.end_headers()
-    
-    def do_GET(self):
-        """GET Requests"""
-        path = urlparse(self.path).path
-        
-        if path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            html = b'''
-            <html>
-            <head><title>VISCA Bridge</title></head>
-            <body>
-                <h1>VISCA Bridge Running</h1>
-                <p>Use React Frontend or API:</p>
-                <ul>
-                    <li>GET /api/stats - Status</li>
-                    <li>GET /api/presets - Commands</li>
-                    <li>POST /api/cmd - Send command</li>
-                </ul>
-            </body>
-            </html>
-            '''
-            self.wfile.write(html)
-            
-        elif path == '/api/stats':
-            try:
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                
-                with log_lock:
-                    log_list = [dict(entry) for entry in list(log_queue)[:50]]
-                
-                data = {
-                    'run': bool(running),
-                    'ser': bool(serial_conn and serial_conn.is_open),
-                    'cli': int(stats['clients']),
-                    'tot': int(stats['total_conn']),
-                    'i2r': int(stats['ip_to_rs232']),
-                    'r2i': int(stats['rs232_to_ip']),
-                    'act': int(stats['last_activity']),
-                    'start': int(stats['start_time']),
-                    'port': str(SERIAL_PORT),
-                    'baud': int(SERIAL_BAUDRATE),
-                    'vport': int(VISCA_IP_PORT),
-                    'log': log_list
-                }
-                
-                json_str = json.dumps(data, ensure_ascii=False)
-                self.wfile.write(json_str.encode('utf-8'))
-            except Exception as e:
-                log('E', f'Stats API error: {e}')
-                self.send_error(500, str(e))
-            
-        elif path == '/api/presets':
-            try:
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                json_str = json.dumps(VISCA_PRESETS, ensure_ascii=False)
-                self.wfile.write(json_str.encode('utf-8'))
-            except Exception as e:
-                log('E', f'Presets API error: {e}')
-                self.send_error(500, str(e))
-            
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def do_POST(self):
-        """POST Requests"""
-        if self.path == '/api/cmd':
-            try:
-                length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(length)
-                data = json.loads(body)
-                
-                hex_command = data.get('hex', '')
-                if not hex_command:
-                    result = {'ok': False, 'err': 'No hex command provided'}
-                else:
-                    result = send_command(hex_command)
-                
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps(result).encode())
-                
-            except Exception as e:
-                self.send_response(500)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                error = {'ok': False, 'err': str(e)}
-                self.wfile.write(json.dumps(error).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-
-def run_web():
-    """Web Server starten"""
-    server = HTTPServer(('0.0.0.0', WEB_PORT), WebHandler)
-    log('I', f'Web: http://0.0.0.0:{WEB_PORT}')
-    server.serve_forever()
-
 
 def main():
     """Hauptfunktion"""
@@ -483,7 +352,8 @@ def main():
     visca_thread.start()
     
     try:
-        run_web()
+        while running:
+            sleep(1)
     except KeyboardInterrupt:
         print("\nShutdown...")
         running = False

@@ -1,0 +1,14 @@
+[Unit]
+Description=visca-bridge
+After=network.target
+
+[Service]
+User=Visca-Bridge
+Group=Visca-Bridge
+WorkingDirectory=/home/Visca-Bridge/visca-bridge
+ExecStart=/home/Visca-Bridge/visca-bridge/venv/bin/python /home/Visca-Bridge/visca-bridge/main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
