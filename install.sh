@@ -100,6 +100,10 @@ configure_console_login() {
 	local banner_label
 	local enable_autologin
 	local primary_ip
+	local color_cyan
+	local color_green
+	local color_yellow
+	local color_reset
 
 	current_hostname="$(hostname)"
 	read -r -p "Hostname für Banner und System [${current_hostname}]: " selected_hostname
@@ -117,18 +121,23 @@ configure_console_login() {
 	primary_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
 	primary_ip="${primary_ip:-unbekannt}"
 
-	cat > /etc/issue <<EOF
-Debian GNU/Linux \s \r \l
+	color_cyan=$'\033[1;36m'
+	color_green=$'\033[1;32m'
+	color_yellow=$'\033[1;33m'
+	color_reset=$'\033[0m'
 
-$selected_hostname tty1
-$selected_hostname login: root (automatic login)
+	cat > /etc/issue <<EOF
+${color_cyan}Debian GNU/Linux \s \r \l${color_reset}
+
+${color_green}$selected_hostname tty1${color_reset}
+${color_yellow}$selected_hostname login: root (automatic login)${color_reset}
 EOF
 
 	cat > /etc/motd <<EOF
-$banner_label
+${color_cyan}$banner_label${color_reset}
 
-Hostname: $selected_hostname
-IP Address: $primary_ip
+${color_green}Hostname:${color_reset} $selected_hostname
+${color_yellow}IP Address:${color_reset} $primary_ip
 EOF
 
 	if [[ "$enable_autologin" == "yes" ]]; then
