@@ -53,6 +53,96 @@ select_serial_port() {
 	done
 }
 
+select_baudrate() {
+	local choice=""
+
+	while true; do
+		read -r -p "Baudrate eingeben [9600]: " choice
+		if [[ -z "$choice" ]]; then
+			printf '%s\n' "9600"
+			return
+		fi
+		if [[ "$choice" =~ ^[0-9]+$ ]]; then
+			printf '%s\n' "$choice"
+			return
+		fi
+		echo "Bitte eine numerische Baudrate eingeben."
+	done
+}
+
+prompt_yes_no() {
+	local prompt_text="$1"
+	local default_answer="$2"
+	local choice=""
+
+	while true; do
+		read -r -p "$prompt_text" choice
+		choice="${choice:-$default_answer}"
+		case "$choice" in
+			j|J|ja|JA|Ja|y|Y|yes|YES|Yes)
+				printf '%s\n' "yes"
+				return
+				;;
+			n|N|nein|NEIN|Nein|no|NO|No)
+				printf '%s\n' "no"
+				return
+				;;
+			*)
+				echo "Bitte mit ja oder nein antworten."
+				;;
+		esac
+	done
+}
+
+configure_console_login() {
+	local current_hostname
+	local selected_hostname
+	local banner_label
+	local enable_autologin
+	local primary_ip
+
+	current_hostname="$(hostname)"
+	read -r -p "Hostname für Banner und System [${current_hostname}]: " selected_hostname
+	selected_hostname="${selected_hostname:-$current_hostname}"
+
+	read -r -p "Banner-Bezeichnung [VISCA Bridge]: " banner_label
+	banner_label="${banner_label:-VISCA Bridge}"
+
+	enable_autologin="$(prompt_yes_no "Root-Autologin auf tty1 aktivieren? [J/n]: " "yes")"
+
+	if [[ "$selected_hostname" != "$current_hostname" ]]; then
+		hostnamectl set-hostname "$selected_hostname"
+	fi
+
+	primary_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+	primary_ip="${primary_ip:-unbekannt}"
+
+	cat > /etc/issue <<EOF
+Debian GNU/Linux \s \r \l
+
+$selected_hostname tty1
+$selected_hostname login: root (automatic login)
+EOF
+
+	cat > /etc/motd <<EOF
+$banner_label
+
+Hostname: $selected_hostname
+IP Address: $primary_ip
+EOF
+
+	if [[ "$enable_autologin" == "yes" ]]; then
+		mkdir -p /etc/systemd/system/getty@tty1.service.d
+		cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf <<EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I \$TERM
+EOF
+		systemctl daemon-reload
+		systemctl restart getty@tty1.service
+	fi
+}
+
 apt update
 apt install -y git python3 python3-pip python3-venv
 
@@ -75,9 +165,13 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
 SERIAL_PORT_SELECTED="$(select_serial_port)"
+SERIAL_BAUDRATE_SELECTED="$(select_baudrate)"
 cat > "$INSTALL_DIR/.env" <<EOF
 VISCA_SERIAL_PORT=$SERIAL_PORT_SELECTED
+VISCA_SERIAL_BAUDRATE=$SERIAL_BAUDRATE_SELECTED
 EOF
+
+configure_console_login
 
 install -m 644 "$SERVICE_SRC" /etc/systemd/system/visca-bridge.service
 systemctl daemon-reload
