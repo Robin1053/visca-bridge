@@ -3,3 +3,5 @@ Frontend/.env
 
 .venv/
 __pycache__/
+
+AGENTs.md

@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-"""
-VISCA Bridge - Optimiert für Raspberry Pi Zero mit CV620 Presets
-FIXED VERSION - Timeout und Fehlerbehandlung verbessert
+"""visca-bridge main module
+
+Single-file VISCA-over-TCP -> RS232 bridge optimized for small systems
+(Raspberry Pi notes in README.md). This module is intentionally simple:
+- loads optional .env from repo root (see `load_env_file`)
+- chooses a serial port (interactive when running in a TTY)
+- starts a non-blocking TCP server on VISCA_IP_PORT and proxies bytes
+
+The code uses a background thread (`visca_loop`) and a select()-based
+main loop for client sockets. Shutdown is cooperative via the global
+`running` flag.
 """
 
 import socket
@@ -24,7 +32,13 @@ VISCA_IP_PORT = 1259
 
 
 def load_env_file():
-    """Einfache .env-Datei aus dem Projektverzeichnis laden."""
+    """Load a simple .env file from the project root.
+
+    Important: values are installed into os.environ using
+    `os.environ.setdefault(key, value)`. That means real environment
+    variables take precedence over `.env` entries. Use explicit
+    environment variables when running in automation/CI.
+    """
     env_path = Path(__file__).with_name('.env')
     if not env_path.exists():
         return
@@ -46,6 +60,8 @@ def load_env_file():
                 os.environ.setdefault(key, value)
 
 
+# Load .env early so environment variables and module-level defaults
+# (eg. SERIAL_PORT) can pick up configured values from the repository.
 load_env_file()
 
 SERIAL_PORT = os.getenv('VISCA_SERIAL_PORT', '/dev/ttyUSB0')
@@ -94,6 +110,8 @@ def choose_serial_port(default_port=SERIAL_PORT):
     ports = list_serial_ports()
 
     if not ports:
+        # No serial devices found: use default. This is common in CI
+        # or headless containers where no /dev/ttyUSB* exists.
         log('W', 'Keine seriellen Geräte gefunden, verwende Standardport')
         return default_port
 
@@ -103,6 +121,9 @@ def choose_serial_port(default_port=SERIAL_PORT):
         manufacturer = f' | {port.manufacturer}' if port.manufacturer else ''
         print(f"  {index}) {port.device} - {description}{manufacturer}")
 
+    # If not running in an interactive TTY (daemon/CI), don't attempt to
+    # prompt the user; fall back to the default. Automated runs should set
+    # VISCA_SERIAL_PORT to avoid surprises.
     if not sys.stdin.isatty():
         print(f"Kein interaktives Terminal, verwende Standardport: {default_port}")
         return default_port
@@ -123,7 +144,12 @@ def choose_serial_port(default_port=SERIAL_PORT):
 
 
 def setup_serial():
-    """Serial Port öffnen mit verbesserter Fehlerbehandlung"""
+    """Open and configure the serial port.
+
+    Returns True on success, False on failure. Uses choose_serial_port() to
+    select the device and creates a pyserial Serial object assigned to the
+    module-level `serial_conn` variable.
+    """
     global serial_conn
     port_to_use = choose_serial_port()
 
@@ -148,12 +174,23 @@ def setup_serial():
 
 
 def setup_visca_server():
-    """VISCA TCP Server"""
+    """Create, bind and listen on the VISCA TCP server socket.
+
+    Returns True on success, False on failure. Binds to VISCA_IP_HOST:VISCA_IP_PORT.
+    """
     global visca_socket
     try:
         visca_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         visca_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        visca_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        # Try to set SO_REUSEPORT for quick restarts across processes. On
+        # some platforms (older kernels, restricted containers) this may
+        # raise; that's acceptable — the exception is caught below and
+        # logged from the caller.
+        try:
+            visca_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except Exception:
+            # Not fatal; continue without SO_REUSEPORT.
+            pass
         visca_socket.setblocking(0)
         
         # Warte kurz falls Port noch im TIME_WAIT
@@ -171,7 +208,11 @@ def setup_visca_server():
 
 
 def read_serial_response(timeout=RESPONSE_WAIT):
-    """Serial Antwort mit Timeout lesen"""
+    """Read a response from the serial device up to `timeout` seconds.
+
+    VISCA messages are terminated with 0xFF. The loop reads available
+    bytes and stops early when a trailing 0xFF is observed.
+    """
     if not serial_conn or not serial_conn.is_open:
         return None
     
@@ -183,7 +224,8 @@ def read_serial_response(timeout=RESPONSE_WAIT):
             if serial_conn.in_waiting > 0:
                 chunk = serial_conn.read(serial_conn.in_waiting)
                 response += chunk
-                # VISCA Antwort endet immer mit FF
+                # VISCA response frames end with 0xFF; stop reading when
+                # we see a chunk whose last byte is 0xFF.
                 if chunk and chunk[-1] == 0xFF:
                     break
             sleep(0.01)
@@ -195,9 +237,14 @@ def read_serial_response(timeout=RESPONSE_WAIT):
 
 
 def handle_visca():
-    """VISCA Verbindungen verarbeiten"""
+    """Accept new TCP clients and proxy data between TCP clients and serial.
+
+    Called repeatedly from visca_loop(). Uses select() with a short timeout to
+    avoid blocking the background thread.
+    """
     global clients, stats
-    
+    # Build the readable list for select(): the listening socket plus any
+    # currently connected client sockets. Sockets are non-blocking.
     readable = [visca_socket] + clients
     try:
         ready, _, _ = select.select(readable, [], [], 0.01)
@@ -207,7 +254,7 @@ def handle_visca():
     
     for sock in ready:
         if sock is visca_socket:
-            # Neue Verbindung
+            # New connection on the listening socket
             try:
                 client, addr = visca_socket.accept()
                 client.setblocking(0)
@@ -218,7 +265,7 @@ def handle_visca():
             except Exception as e:
                 log('W', f'Accept error: {e}')
         else:
-            # Daten von Client
+            # Data from a client socket
             try:
                 data = sock.recv(1024)
                 if data:
@@ -231,7 +278,10 @@ def handle_visca():
                             stats['last_activity'] = int(time())
                             log('D', f'IP->RS232: {data.hex()}')
                             
-                            # Auf Antwort warten
+                            # Wait for a (synchronous) response from the
+                            # camera. Many VISCA commands produce an
+                            # immediate response; read_serial_response will
+                            # return None on timeout.
                             response = read_serial_response()
                             if response:
                                 try:
@@ -243,7 +293,7 @@ def handle_visca():
                         except Exception as e:
                             log('E', f'Serial write error: {e}')
                 else:
-                    # Client disconnected
+                    # Client disconnected (recv returned empty bytes)
                     clients.remove(sock)
                     sock.close()
                     stats['clients'] = len(clients)
@@ -259,7 +309,10 @@ def handle_visca():
 
 
 def visca_loop():
-    """VISCA Haupt-Loop"""
+    """Background loop that handles socket IO and unsolicited serial data.
+
+    Runs in a daemon thread; relies on the global `running` flag for shutdown.
+    """
     global running
     log('I', 'VISCA Loop gestartet')
     
@@ -267,7 +320,9 @@ def visca_loop():
         try:
             handle_visca()
             
-            # Unaufgeforderte Kamera-Nachrichten an alle Clients
+            # Unsolicited camera messages: if the camera sends bytes without
+            # a preceding IP request, forward them to all connected clients.
+            # This allows camera status messages to reach controllers.
             if serial_conn and serial_conn.is_open:
                 try:
                     if serial_conn.in_waiting > 0:
@@ -293,7 +348,11 @@ def visca_loop():
 
 
 def send_command(hex_str):
-    """VISCA Befehl senden mit verbesserter Fehlerbehandlung"""
+    """Send a VISCA hex command over the serial link and wait for a response.
+
+    Returns a dict with keys: ok (bool), len (bytes sent), resp (hex string or None)
+    On error returns {'ok': False, 'err': '<message>'}.
+    """
     try:
         # Hex String in Bytes konvertieren
         data = bytes.fromhex(hex_str.replace(' ', ''))
@@ -331,7 +390,12 @@ def send_command(hex_str):
 
 
 def main():
-    """Hauptfunktion"""
+    """Entry point: open serial, start TCP server and run until SIGINT.
+
+    The process exits early if the serial port or TCP server fail to start.
+    For non-interactive environments set VISCA_SERIAL_PORT in the environment
+    to avoid prompts.
+    """
     global running
     
     print("=" * 40)
