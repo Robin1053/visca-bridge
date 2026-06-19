@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visca-bridge"
+version = "1.1.0"
+description = "VISCA-over-TCP to RS-232 Bridge"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Robin", email = "robineb174@gmx.de" }]
+dependencies = ["pyserial>=3.0"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "mypy", "pylint", "black", "flake8"]
+
+[project.urls]
+Repository = "https://github.com/Robin1053/visca-bridge"
+Issues = "https://github.com/Robin1053/visca-bridge/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--maxfail=1 -q"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+ignore_missing_imports = true
+
+[tool.black]
+line-length = 88

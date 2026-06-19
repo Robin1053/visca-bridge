@@ -4,163 +4,140 @@
 [![Last Commit](https://img.shields.io/github/last-commit/Robin1053/visca-bridge)](https://github.com/Robin1053/visca-bridge/commits/master)
 [![Open Issues](https://img.shields.io/github/issues/Robin1053/visca-bridge)](https://github.com/Robin1053/visca-bridge/issues)
 [![Repo size](https://img.shields.io/github/repo-size/Robin1053/visca-bridge)](https://github.com/Robin1053/visca-bridge)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.9-cyan)](https://www.python.org/)
+[![Build Status](https://img.shields.io/badge/build-placeholder-lightgrey)](https://github.com/Robin1053/visca-bridge/actions)
+[![Coverage](https://img.shields.io/badge/coverage-placeholder-lightgrey)](CHANGELOG.md)
 
-Visca-bridge ist eine schlanke VISCA-over-IP ↔ RS-232 Bridge. Dieses Repository enthält das Python-Backend mit **TCP Server** sowie die serielle Anbindung.
+visca-bridge ist ein schlankes, wartbares Python-Backend, das VISCA-over-TCP mit einer seriellen RS-232-Kamera verbindet. Fokus: Stabilität, einfache Konfiguration und zuverlässiges Proxying von VISCA-Befehlen.
 
-Kurz: Backend (Python) steuert die serielle Verbindung zur Kamera und stellt Steuerung sowie Status über TCP bereit, UDP ist für später geplant.
+## Quick Start
 
-## ✅ Aktueller Projektaufbau
+Kurz: Clone → virtuelles Environment → Abhängigkeiten installieren → starten
+
+```bash
+git clone https://github.com/Robin1053/visca-bridge.git
+cd visca-bridge
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+python main.py
+```
+
+Hinweis: Python 3.9+ wird empfohlen.
+
+## Projektstruktur (aktuell)
 
 ```
 ./
-├── main.py                      # Python-Backend
-├── install.sh                   # Linux Install Script
-├── requirements.txt             # Python Requirements file
-└── README.md
+├── main.py                      # Orchestrierung / Einstiegspunkt
+├── pyproject.toml               # Projektmetadaten, Dependencies
+├── ROADMAP.md                   # Projekt-Roadmap
+├── CHANGELOG.md                 # Release-Historie
+├── README.md
+├── install.sh                   # Optionaler Installer für Raspberry Pi
+└── ...
 ```
 
 ## Hauptfunktionen
 
-- **Protokoll-Unterstützung**: 
-  - **VISCA-over-TCP** (Port 1259) - Standard VISCA, Multi-Client Support
+- **VISCA-over-TCP** (Port 1259) — Standard VISCA, Multi-Client Support
 - **Bidirektionale Bridge**: VISCA-over-IP ↔ RS-232
 - **Multi-Client Support**: Mehrere TCP-Clients gleichzeitig
-- **Automatisches Response-Handling**: Kamera-Antworten werden automatisch zurückgesendet
-- **Auto-Reconnect**: Automatische Wiederverbindung bei Serial-Problemen
-- **Konfigurierbare Parameter**: Netzwerk, Serial, Timeouts
+- **Synchronous Response Handling**: Kamera-Antworten werden bei Bedarf zurückgeleitet
+- **Auto-Reconnect**: Wiederverbindung bei Serial-Problemen mit Backoff
+- **Konfigurierbare Parameter**: Netzwerk, Serial, Timeouts via `.env` oder Umgebungsvariablen
 
 ## Voraussetzungen
 
-- Python 3.8+ (Backend)
-- `pyserial` für serielle Hardware
+- Python 3.9+ (empfohlen)
+- `pyserial` für serielle Hardware (wird über `pyproject.toml` installiert)
 
 ## Installation
 
-### Automatischer Installer auf Debian/Linux
+Es gibt zwei typische Wege:
 
-Wenn du das Projekt auf Debian oder einem Debian-basierten System einrichtest, kannst du den interaktiven Installer verwenden:
+1) Production (Raspberry Pi / System-Installation)
 
 ```bash
 sudo bash install.sh
 ```
 
-Der Installer liegt auch direkt als Raw-Datei auf GitHub:
+Der Installer erstellt eine `.env` im Projektverzeichnis und nimmt einige Einstellungen entgegen (Serial-Port, Baudrate, Hostname).
+
+2) Development (lokal, für Contributor)
 
 ```bash
-https://raw.githubusercontent.com/Robin1053/visca-bridge/refs/heads/master/install.sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
 ```
 
-Wenn du ihn direkt herunterladen und ausführen willst:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Robin1053/visca-bridge/refs/heads/master/install.sh | bash
-```
-
-Der Installer fragt dabei nacheinander nach:
-
-- seriellem Port oder USB-Gerät
-- Baudrate
-- Hostname für den Startbildschirm
-- Banner-Bezeichnung
-- optionalem Root-Autologin auf `tty1`
-
-Die Auswahl wird in einer `.env` im Projektverzeichnis gespeichert, damit `main.py` beim Start automatisch den gewählten Port und die Baudrate verwendet.
-
-1. Repository klonen:
-
-```bash
-git clone https://github.com/Robin1053/visca-bridge.git
-cd visca-bridge
-```
-
-2. Python-Abhängigkeiten installieren:
-
-```bash
-pip install -r requirements.txt
-```
-
-Oder manuell:
-
-```bash
-pip install pyserial
-```
+Das installiert die Laufzeit-Abhängigkeiten sowie Dev-Extras (pytest, mypy, black).
 
 ## Entwicklung — Backend (lokal)
 
-1. (Optional) Erstelle ein virtuelles Environment und installiere Abhängigkeiten:
+Nach dem Setup (`pip install -e .[dev]`) kannst du testen und entwickeln:
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install --upgrade pip
-pip install pyserial
-```
+Starten in der Entwicklung:
 
-2. Backend starten:
-
-```powershell
+```bash
+source .venv/bin/activate
 python main.py
 ```
 
-### Windows-Hinweise
+Tests ausführen:
 
-Unter Windows gibt es keinen `install.sh`-Ablauf. Stattdessen:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python main.py
+```bash
+pytest
 ```
 
-Wenn du unter Windows keinen echten USB-Seriell-Adapter hast, kannst du zum Testen ein virtuelles COM-Port-Paar verwenden, zum Beispiel mit `com0com` oder einer ähnlichen Nullmodem-Lösung. Dann trägst du den passenden Port in der `.env` als `VISCA_SERIAL_PORT=COM3` ein.
+Weitere Dev-Kommandos (Lint, Type-Check):
 
-
-Das Backend startet automatisch:
-- **TCP Server** auf Port 1259 (Standard VISCA)
-### Backend-Ausgabe
-
-```
-[INFO] [VISCA] Connected to /dev/ttyUSB0
-[INFO] [TCP] VISCA TCP listening on :1259
-[INFO] [TCP] Server thread started
+```bash
+black .
+mypy visca/
+pylint visca/
 ```
 
-### VISCA TCP testen
+Hinweis für Windows: Erstelle ein venv und aktiviere es mit PowerShell (Activate.ps1). Für virtuelle COM-Ports unter Windows nutze `com0com`.
 
-Manuell mit Python:
-
-```python
-import socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect(('localhost', 1259))
-sock.send(bytes.fromhex('8101040002FF'))  # Power ON
-response = sock.recv(1024)
-print(response.hex())
-sock.close()
-```
+Das Backend startet standardmässig den TCP-Server auf Port 1259.
 
 ## Konfiguration
 
-Die Laufzeitkonfiguration kann über eine `.env` im Projektverzeichnis gesetzt werden. Unterstützt werden aktuell:
+Laufzeitkonfiguration erfolgt über eine `.env` im Projektverzeichnis oder über Umgebungsvariablen. Beispiele:
 
 ```env
 VISCA_SERIAL_PORT=/dev/ttyUSB0
 VISCA_SERIAL_BAUDRATE=9600
+VISCA_IP_PORT=1259
+VISCA_LOG_LEVEL=INFO
 ```
 
-Backend-Parameter sind in `main.py` als Konstanten definiert:
+Default-Parameter (konfigurierbar):
 
-    ```python
-    VISCA_IP_HOST = '0.0.0.0'         # Bind-Adresse für TCP
-    VISCA_IP_PORT = 1259              # TCP Port (Standard VISCA-over-TCP)
-    SERIAL_PORT = '/dev/ttyUSB0'      # Serial Port, alternativ aus .env (Windows: 'COM3')
-    SERIAL_BAUDRATE = 9600            # Baudrate, alternativ aus .env
-    RESPONSE_WAIT = 0.3               # Warte-Zeit auf Kamera-Antwort (Sek.)
-    ```
+```python
+VISCA_IP_HOST = '0.0.0.0'
+VISCA_IP_PORT = 1259
+SERIAL_PORT = '/dev/ttyUSB0'
+SERIAL_BAUDRATE = 9600
+RESPONSE_WAIT = 0.3
+```
 
-**Hinweis für Windows**: Setze `VISCA_SERIAL_PORT=COM3` in der `.env` oder nutze den Installer nicht, sondern starte direkt mit einem passenden COM-Port.
+Windows: Setze `VISCA_SERIAL_PORT=COM3` in der `.env` oder verwende ein entsprechendes virtuelles COM-Paar.
+
+### VISCA TCP testen
+
+Mit Python (TCP) kannst du manuell Befehle senden:
+
+```python
+import socket
+sock = socket.socket()
+sock.connect(('localhost', 1259))
+sock.send(bytes.fromhex('8101040002FF'))  # Power ON
+print(sock.recv(1024).hex())
+sock.close()
+```
 
 ### Port-Übersicht
 
@@ -168,19 +145,9 @@ Backend-Parameter sind in `main.py` als Konstanten definiert:
 |---------|------|-----------|------------|
 | VISCA TCP | 1259 | TCP | Standard VISCA, Multi-Client |
 
+## Raspberry Pi — Produktivbetrieb
 
-### VISCA-over-TCP (Port 1259)
-- ✅ Verbindungsorientiert und zuverlässig
-- ✅ Automatisches Response-Handling
-- ✅ Multi-Client Support (mehrere Controller gleichzeitig)
-- ✅ Session-basiert
-- ✅ Standard VISCA-Protokoll (kein Header)
-- 🎯 **Empfohlen für die meisten Anwendungen**
-
-
-## Kurz-Anleitung für Raspberry Pi (Produktiv)
-
-1. Python und Abhängigkeiten installieren:
+Empfohlene Schritte auf einem Raspberry Pi:
 
 ```bash
 sudo apt update && sudo apt upgrade -y
@@ -188,29 +155,28 @@ sudo apt install python3 python3-venv python3-pip python3-serial -y
 cd /home/pi/visca-bridge
 ```
 
-2. Serial-Port aktivieren mit `raspi-config` (Interface Options → Serial Port):
-   - Login Shell über Serial: **Nein**
-   - Serial Port Hardware: **Ja**
+Serial-Port in raspi-config aktivieren (Interface → Serial Port):
+- Login Shell über Serial: **Nein**
+- Serial Port Hardware: **Ja**
 
-3. Port-Namen prüfen und in `.env` anpassen:
+Ports prüfen:
 
 ```bash
 ls -la /dev/tty* | grep USB
-# Oder für onboard UART:
 ls -la /dev/serial*
 ```
 
-4. Test-Start:
+Start (Test):
 
 ```bash
 python3 main.py
 ```
 
-5. (Optional) Systemd-Service anlegen `/etc/systemd/system/visca-bridge.service`:
+Optional: Systemd-Service (angepassten Pfad verwenden):
 
 ```ini
 [Unit]
-Description=VISCA Bridge - TCP/UDP to RS232
+Description=VISCA Bridge - TCP to RS232
 After=network.target
 
 [Service]
@@ -223,20 +189,8 @@ User=pi
 [Install]
 WantedBy=multi-user.target
 ```
-oder aus Repository kopieren 
-```bash
-sudo cp ./visca-bridge.service /etc/systemd/system/visca-bridge.service
-```
-Service aktivieren:
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable visca-bridge
-sudo systemctl start visca-bridge
-sudo systemctl status visca-bridge
-```
-
-Logs anzeigen:
+Logs anschauen:
 
 ```bash
 sudo journalctl -u visca-bridge -f
@@ -247,48 +201,29 @@ sudo journalctl -u visca-bridge -f
 ### Test ohne echte Hardware
 
 - Linux/Debian: virtuelles PTY-Paar mit `socat`
-- Windows: virtuelles COM-Port-Paar mit `com0com` oder ähnlicher Software
-- In beiden Fällen kannst du den Port in der `.env` setzen und den TCP-Server normal starten
+- Windows: virtuelles COM-Port-Paar mit `com0com`
+
+Stelle in beiden Fällen den virtuellen Port in `.env` ein.
 
 ### Serielle Verbindung
 
-- **Keine Kamera-Reaktion**: 
-  - TX/RX Pins vertauscht? 
-  - Baudrate prüfen (Standard 9600)
-  - `RESPONSE_WAIT` in `main.py` erhöhen (z.B. auf 0.5 oder 1.0)
-  
-- **Serial-Access auf Raspberry Pi**: 
-  - Serielle Konsole muss deaktiviert sein
-  - Hardware-Schnittstelle muss aktiviert sein
-
-- **Port-Namen**:
-  - Linux: `/dev/ttyUSB0`, `/dev/ttyAMA0`, `/dev/serial0`
-  - Windows: `COM3`, `COM4`, etc.
-  - macOS: `/dev/tty.usbserial-*`
+- **Keine Kamera-Reaktion**: TX/RX vertauscht, falsche Baudrate, Kamera aus
+- **Serial-Access auf Raspberry Pi**: Serielle Konsole deaktivieren, Hardware aktivieren
+- **Port-Namen**: Linux `/dev/ttyUSB0`, Windows `COM3`, macOS `/dev/tty.usbserial-*`
 
 ### Netzwerk
 
-- **TCP Port belegt**: 
-  ```bash
-  # Windows
-  netstat -an | findstr 1259
-  
-  # Linux/macOS
-  lsof -i :1259
-  ```
-  Lösung: Port in `main.py` ändern
-  
-  - **Firewall**: Port 1259 (TCP) freigeben
+Wenn Port 1259 belegt:
 
-### TCP-Client
-
-- **Verbindung wird abgelehnt**: Server läuft? Port korrekt?
-- **Timeout beim Response**: `RESPONSE_WAIT` erhöhen
-- **Keine Antwort**: Kamera eingeschaltet? Serial-Verbindung OK?
+```bash
+lsof -i :1259
+# oder (Windows)
+netstat -an | findstr 1259
+```
 
 ### Logging
 
-Detaillierte Debug-Logs aktivieren in `main.py`:
+Nutze die integrierte Logging-Konfiguration (siehe `pyproject.toml` und `config`-Modul nach Refactor). Für schnelle Debug-Runs:
 
 ```python
 import logging
@@ -326,8 +261,6 @@ Alle VISCA-Befehle sind hexadezimal und enden mit `FF`:
 810104013FppFF - Set Preset (pp = Preset Number 00-FE)
 ```
 
-
-
 ## Architektur
 
 ```
@@ -363,20 +296,9 @@ Alle VISCA-Befehle sind hexadezimal und enden mit `FF`:
 
 MIT License — siehe `LICENSE`.
 
-## Changelog
+Weiterführende Links
 
-### Version 2.0 (Juni 2026)
-- ✨ Interaktiver Installer mit Port-, Baudraten- und tty1-Abfrage
-- ✨ `.env`-Konfiguration für Serial-Port und Baudrate
-- ✨ Farbiger tty1-Startbildschirm mit Hostname und IP
-- ✨ Raw-Installer-Download von GitHub dokumentiert
-- 📚 README auf den aktuellen Stand aktualisiert
-
-
-### Version 1.0
-- VISCA-over-TCP Server
-- Serielle RS-232 Bridge
-
----
-
-**Datum der Aktualisierung:** 16/06/2026
+- ROADMAP: `ROADMAP.md`
+- CHANGELOG: `CHANGELOG.md`
+- CONTRIBUTING: `CONTRIBUTING.md` (wird ergänzt)
+- ARCHITECTURE: `ARCHITECTURE.md` (wird ergänzt)
