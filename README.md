@@ -45,16 +45,19 @@ Wenn du das Projekt auf Debian oder einem Debian-basierten System einrichtest, k
 sudo bash install.sh
 ```
 
-Der Installer liegt auch direkt als Raw-Datei auf GitHub:
+Ohne vorher zu klonen geht es direkt per curl. Der Installer holt das Repo dann selbst nach `/home/Visca-Bridge/visca-bridge`:
 
 ```bash
-https://raw.githubusercontent.com/Robin1053/visca-bridge/refs/heads/master/install.sh
+curl -fsSL https://raw.githubusercontent.com/Robin1053/visca-bridge/refs/heads/master/install.sh | sudo bash
 ```
 
-Wenn du ihn direkt herunterladen und ausführen willst:
+Die Abfragen werden dabei von `/dev/tty` gelesen und funktionieren deshalb auch über die Pipe. Ein erneuter Aufruf aktualisiert eine bestehende Installation; die vorhandene `.env` wird als Vorgabe übernommen.
+
+Ohne Terminal (z. B. in Skripten) nimmt der Installer die Defaults. Diese lassen sich per Umgebungsvariable setzen:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Robin1053/visca-bridge/refs/heads/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Robin1053/visca-bridge/refs/heads/master/install.sh \
+  | sudo VISCA_SERIAL_PORT=/dev/ttyUSB0 VISCA_SERIAL_BAUDRATE=9600 VISCA_AUTOLOGIN=no bash
 ```
 
 Der Installer fragt dabei nacheinander nach:

@@ -64,8 +64,26 @@ def load_env_file():
 # (eg. SERIAL_PORT) can pick up configured values from the repository.
 load_env_file()
 
-SERIAL_PORT = os.getenv('VISCA_SERIAL_PORT', '/dev/ttyUSB0')
-SERIAL_BAUDRATE = int(os.getenv('VISCA_SERIAL_BAUDRATE', '9600'))
+DEFAULT_SERIAL_PORT = '/dev/ttyUSB0'
+DEFAULT_SERIAL_BAUDRATE = 9600
+
+
+def _parse_baudrate(raw):
+    """Baudrate aus .env/Umgebung lesen, bei Unsinn auf Default zurückfallen."""
+    try:
+        value = int(str(raw).strip())
+        if value > 0:
+            return value
+    except (TypeError, ValueError):
+        pass
+    print(f"[W] Ungültige Baudrate {raw!r}, verwende {DEFAULT_SERIAL_BAUDRATE}", file=sys.stderr)
+    return DEFAULT_SERIAL_BAUDRATE
+
+
+# `or` statt getenv-Default: ein leerer Wert (VISCA_SERIAL_PORT=) soll ebenfalls
+# auf den Default fallen, nicht als leerer Portname durchgereicht werden.
+SERIAL_PORT = (os.getenv('VISCA_SERIAL_PORT') or '').strip() or DEFAULT_SERIAL_PORT
+SERIAL_BAUDRATE = _parse_baudrate(os.getenv('VISCA_SERIAL_BAUDRATE') or DEFAULT_SERIAL_BAUDRATE)
 SERIAL_TIMEOUT = 1.0
 MAX_LOG_ENTRIES = 100
 RESPONSE_WAIT = 0.3
@@ -103,7 +121,7 @@ def list_serial_ports():
 
 def choose_serial_port(default_port=SERIAL_PORT):
     """Serielles Gerät interaktiv auswählen, wenn mehrere verfügbar sind."""
-    configured_port = os.getenv('VISCA_SERIAL_PORT')
+    configured_port = (os.getenv('VISCA_SERIAL_PORT') or '').strip()
     if configured_port:
         return configured_port
 
@@ -404,12 +422,12 @@ def main():
     
     if not setup_serial():
         print("FEHLER: Serial Port kann nicht geöffnet werden")
-        print(f"Prüfe: sudo chmod 666 {SERIAL_PORT}")
-        return
+        print(f"Prüfe: Ist der Adapter angesteckt (ls /dev/ttyUSB*) und VISCA_SERIAL_PORT in .env korrekt? Aktuell: {SERIAL_PORT}")
+        sys.exit(1)
     
     if not setup_visca_server():
         print("FEHLER: VISCA Server kann nicht gestartet werden")
-        return
+        sys.exit(1)
     
     # VISCA Thread starten
     visca_thread = Thread(target=visca_loop, daemon=True)
