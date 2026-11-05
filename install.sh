@@ -1,20 +1,132 @@
 #!/usr/bin/env bash
+#
+# visca-bridge Installer
+#
+# Funktioniert auf drei Wegen:
+#   1. Aus dem geklonten Repo:   sudo bash install.sh
+#   2. Direkt per curl:          curl -fsSL <raw-url>/install.sh | sudo bash
+#   3. Per Prozess-Substitution: sudo bash <(curl -fsSL <raw-url>/install.sh)
+#
+# Liegt das Skript nicht neben main.py (Fall 2 und 3), wird das Repo
+# automatisch von GitHub geholt. Eingaben werden immer von /dev/tty gelesen,
+# damit die Abfragen auch funktionieren, wenn das Skript selbst über stdin kommt.
+#
+# Ohne Terminal (z. B. Automatisierung) werden die Defaults genommen; sie lassen
+# sich per Umgebungsvariable vorgeben:
+#   VISCA_SERIAL_PORT, VISCA_SERIAL_BAUDRATE, VISCA_HOSTNAME, VISCA_BANNER,
+#   VISCA_AUTOLOGIN (yes/no), VISCA_REPO_URL, VISCA_REPO_BRANCH
+#
+# Alles steckt in main(), damit bash bei `curl | bash` erst das ganze Skript
+# einliest, bevor irgendetwas ausgeführt wird (kein halb geladenes Skript bei
+# Abbruch des Downloads, und kein Befehl kann den Rest des Skripts von stdin
+# "wegessen").
+
 set -euo pipefail
 
-if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-	exec sudo -E bash "$0" "$@"
-fi
+REPO_URL="${VISCA_REPO_URL:-https://github.com/Robin1053/visca-bridge.git}"
+REPO_BRANCH="${VISCA_REPO_BRANCH:-master}"
+RAW_URL="https://raw.githubusercontent.com/Robin1053/visca-bridge/refs/heads/${REPO_BRANCH}/install.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="/home/Visca-Bridge/visca-bridge"
-SERVICE_SRC="$SCRIPT_DIR/visca-bridge.service"
+INSTALL_USER="Visca-Bridge"
+INSTALL_HOME="/home/${INSTALL_USER}"
+INSTALL_DIR="${INSTALL_HOME}/visca-bridge"
+ENV_FILE="${INSTALL_DIR}/.env"
+
+# ---------------------------------------------------------------------------
+# Hilfsfunktionen
+# ---------------------------------------------------------------------------
+
+# Alle Meldungen gehen nach stderr. Funktionen, deren Ergebnis per $(...)
+# abgefangen wird, dürfen auf stdout NUR den Rückgabewert schreiben.
+msg()  { printf '%s\n' "$*" >&2; }
+info() { printf '\033[1;36m==>\033[0m %s\n' "$*" >&2; }
+warn() { printf '\033[1;33mWARNUNG:\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31mFEHLER:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# Gibt es ein Terminal, von dem wir lesen können?
+has_tty() { ( exec </dev/tty ) 2>/dev/null; }
+
+# ask "Prompt: " "default"  -> gibt Eingabe oder Default auf stdout aus
+ask() {
+	local prompt="$1" default="$2" reply=""
+	if has_tty; then
+		read -r -p "$prompt" reply </dev/tty || reply=""
+	fi
+	printf '%s\n' "${reply:-$default}"
+}
+
+# Wert aus einer bestehenden .env lesen (für Neuinstallation/Update als Default)
+env_get() {
+	local key="$1"
+	[[ -f "$ENV_FILE" ]] || return 0
+	sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1
+}
+
+is_number() { [[ "$1" =~ ^[0-9]+$ ]] && (( "$1" > 0 )); }
+
+# ---------------------------------------------------------------------------
+# Root-Rechte
+# ---------------------------------------------------------------------------
+
+ensure_root() {
+	[[ ${EUID:-$(id -u)} -eq 0 ]] && return 0
+
+	local self="${BASH_SOURCE[0]:-}"
+	if [[ -n "$self" && -f "$self" ]]; then
+		# Normaler Fall: Skript liegt als Datei vor
+		exec sudo -H bash "$self" "$@"
+	fi
+
+	# Skript kam über eine Pipe (curl ... | bash) -> $0 ist nur "bash",
+	# es gibt keine Datei zum Neustarten. Also nochmal laden und mit sudo starten.
+	command -v curl >/dev/null 2>&1 || die "Bitte mit sudo starten: curl -fsSL $RAW_URL | sudo bash"
+	local tmp
+	tmp="$(mktemp /tmp/visca-bridge-install.XXXXXX.sh)"
+	curl -fsSL "$RAW_URL" -o "$tmp" || die "Konnte Installer nicht laden: $RAW_URL"
+	exec sudo -H bash "$tmp" "$@"
+}
+
+# ---------------------------------------------------------------------------
+# Quellcode bereitstellen
+# ---------------------------------------------------------------------------
+
+fetch_sources() {
+	local self="${BASH_SOURCE[0]:-}" script_dir=""
+	if [[ -n "$self" && -f "$self" ]]; then
+		script_dir="$(cd "$(dirname "$self")" && pwd)"
+	fi
+
+	mkdir -p "$INSTALL_DIR"
+
+	if [[ -n "$script_dir" && -f "$script_dir/main.py" && -f "$script_dir/visca-bridge.service" ]]; then
+		if [[ "$script_dir" != "$INSTALL_DIR" ]]; then
+			info "Kopiere Projekt aus $script_dir nach $INSTALL_DIR"
+			cp -a "$script_dir"/. "$INSTALL_DIR"/
+		fi
+		return
+	fi
+
+	# Kein Repo neben dem Skript -> von GitHub holen.
+	# In ein Temp-Verzeichnis klonen und drüberkopieren, damit eine bestehende
+	# .env und das venv erhalten bleiben (Update-Fall).
+	info "Lade visca-bridge ($REPO_BRANCH) von $REPO_URL"
+	local tmp_clone
+	tmp_clone="$(mktemp -d /tmp/visca-bridge-src.XXXXXX)"
+	git clone --quiet --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$tmp_clone" \
+		|| die "git clone fehlgeschlagen"
+	cp -a "$tmp_clone"/. "$INSTALL_DIR"/
+	rm -rf "$tmp_clone"
+}
+
+# ---------------------------------------------------------------------------
+# Abfragen
+# ---------------------------------------------------------------------------
 
 select_serial_port() {
-	local devices=()
-	local choice=""
+	local devices=() device choice default
 
 	while IFS= read -r device; do
-		devices+=("$device")
+		[[ -n "$device" ]] && devices+=("$device")
 	done < <(
 		{
 			compgen -G "/dev/serial/by-id/*" || true
@@ -23,166 +135,196 @@ select_serial_port() {
 		} | sort -u
 	)
 
-	echo
+	# Default: Umgebungsvariable > bestehende .env > erstes Gerät > /dev/ttyUSB0
+	default="${VISCA_SERIAL_PORT:-$(env_get VISCA_SERIAL_PORT)}"
+	if [[ -z "$default" ]]; then
+		default="${devices[0]:-/dev/ttyUSB0}"
+	fi
+
+	msg ""
 	if [[ ${#devices[@]} -eq 0 ]]; then
-		read -r -p "Keine USB-Seriell-Geräte gefunden. Port manuell eingeben [/dev/ttyUSB0]: " choice
-		printf '%s\n' "${choice:-/dev/ttyUSB0}"
+		warn "Keine USB-Seriell-Geräte gefunden (Adapter angesteckt? -> lsusb, dmesg)."
+		ask "Port manuell eingeben [$default]: " "$default"
 		return
 	fi
 
-	echo "Verfügbare serielle Geräte:"
-	for index in "${!devices[@]}"; do
-		printf '  %d) %s\n' "$((index + 1))" "${devices[$index]}"
+	msg "Verfügbare serielle Geräte:"
+	local i
+	for i in "${!devices[@]}"; do
+		msg "  $((i + 1))) ${devices[$i]}"
 	done
 
 	while true; do
-		read -r -p "Gerät auswählen [1-${#devices[@]}] oder Pfad eingeben: " choice
-		if [[ -z "$choice" ]]; then
-			printf '%s\n' "${devices[0]}"
-			return
-		fi
+		choice="$(ask "Gerät auswählen [1-${#devices[@]}] oder Pfad eingeben [$default]: " "$default")"
 		if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#devices[@]} )); then
 			printf '%s\n' "${devices[$((choice - 1))]}"
 			return
 		fi
-		if [[ -e "$choice" ]]; then
+		if [[ "$choice" == /dev/* ]]; then
+			[[ -e "$choice" ]] || warn "$choice existiert (noch) nicht - wird trotzdem übernommen."
 			printf '%s\n' "$choice"
 			return
 		fi
-		echo "Ungültige Eingabe."
+		msg "Ungültige Eingabe."
+		has_tty || { printf '%s\n' "$default"; return; }
 	done
 }
 
 select_baudrate() {
-	local choice=""
+	local choice default
+
+	default="${VISCA_SERIAL_BAUDRATE:-$(env_get VISCA_SERIAL_BAUDRATE)}"
+	is_number "${default:-x}" || default="9600"
 
 	while true; do
-		read -r -p "Baudrate eingeben [9600]: " choice
-		if [[ -z "$choice" ]]; then
-			printf '%s\n' "9600"
-			return
-		fi
-		if [[ "$choice" =~ ^[0-9]+$ ]]; then
+		choice="$(ask "Baudrate eingeben [$default]: " "$default")"
+		if is_number "$choice"; then
 			printf '%s\n' "$choice"
 			return
 		fi
-		echo "Bitte eine numerische Baudrate eingeben."
+		msg "Bitte eine numerische Baudrate eingeben (z. B. 9600)."
+		has_tty || { printf '%s\n' "$default"; return; }
 	done
 }
 
 prompt_yes_no() {
-	local prompt_text="$1"
-	local default_answer="$2"
-	local choice=""
-
+	local prompt_text="$1" default_answer="$2" choice
 	while true; do
-		read -r -p "$prompt_text" choice
-		choice="${choice:-$default_answer}"
+		choice="$(ask "$prompt_text" "$default_answer")"
 		case "$choice" in
-			j|J|ja|JA|Ja|y|Y|yes|YES|Yes)
-				printf '%s\n' "yes"
-				return
-				;;
-			n|N|nein|NEIN|Nein|no|NO|No)
-				printf '%s\n' "no"
-				return
-				;;
+			j|J|ja|JA|Ja|y|Y|yes|YES|Yes) printf 'yes\n'; return ;;
+			n|N|nein|NEIN|Nein|no|NO|No)  printf 'no\n';  return ;;
 			*)
-				echo "Bitte mit ja oder nein antworten."
+				msg "Bitte mit ja oder nein antworten."
+				has_tty || { printf '%s\n' "$default_answer"; return; }
 				;;
 		esac
 	done
 }
 
+# ---------------------------------------------------------------------------
+# Konsole / Hostname
+# ---------------------------------------------------------------------------
+
+set_hostname() {
+	local old="$1" new="$2"
+	[[ "$new" == "$old" ]] && return
+	hostnamectl set-hostname "$new"
+	# Sonst meckert sudo "unable to resolve host ..."
+	if grep -qE '^127\.0\.1\.1[[:space:]]' /etc/hosts; then
+		sed -i -E "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1\t${new}/" /etc/hosts
+	else
+		printf '127.0.1.1\t%s\n' "$new" >> /etc/hosts
+	fi
+}
+
 configure_console_login() {
-	local current_hostname
-	local selected_hostname
-	local banner_label
-	local enable_autologin
-	local primary_ip
-	local color_cyan
-	local color_green
-	local color_yellow
-	local color_reset
+	local current_hostname selected_hostname banner_label enable_autologin primary_ip
+	local c_cyan=$'\033[1;36m' c_green=$'\033[1;32m' c_yellow=$'\033[1;33m' c_reset=$'\033[0m'
 
 	current_hostname="$(hostname)"
-	read -r -p "Hostname für Banner und System [${current_hostname}]: " selected_hostname
-	selected_hostname="${selected_hostname:-$current_hostname}"
+	selected_hostname="$(ask "Hostname für Banner und System [${VISCA_HOSTNAME:-$current_hostname}]: " "${VISCA_HOSTNAME:-$current_hostname}")"
+	banner_label="$(ask "Banner-Bezeichnung [${VISCA_BANNER:-VISCA Bridge}]: " "${VISCA_BANNER:-VISCA Bridge}")"
+	enable_autologin="$(prompt_yes_no "Root-Autologin auf tty1 aktivieren? [J/n]: " "${VISCA_AUTOLOGIN:-yes}")"
 
-	read -r -p "Banner-Bezeichnung [VISCA Bridge]: " banner_label
-	banner_label="${banner_label:-VISCA Bridge}"
-
-	enable_autologin="$(prompt_yes_no "Root-Autologin auf tty1 aktivieren? [J/n]: " "yes")"
-
-	if [[ "$selected_hostname" != "$current_hostname" ]]; then
-		hostnamectl set-hostname "$selected_hostname"
-	fi
+	set_hostname "$current_hostname" "$selected_hostname"
 
 	primary_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
 	primary_ip="${primary_ip:-unbekannt}"
 
-	color_cyan=$'\033[1;36m'
-	color_green=$'\033[1;32m'
-	color_yellow=$'\033[1;33m'
-	color_reset=$'\033[0m'
-
 	cat > /etc/issue <<EOF
-${color_cyan}Debian GNU/Linux \s \r \l${color_reset}
+${c_cyan}Debian GNU/Linux \s \r \l${c_reset}
 
-${color_green}$selected_hostname tty1${color_reset}
-${color_yellow}$selected_hostname login: root (automatic login)${color_reset}
+${c_green}$selected_hostname tty1${c_reset}
 EOF
 
 	cat > /etc/motd <<EOF
-${color_cyan}$banner_label${color_reset}
+${c_cyan}$banner_label${c_reset}
 
-${color_green}Hostname:${color_reset} $selected_hostname
-${color_yellow}IP Address:${color_reset} $primary_ip
+${c_green}Hostname:${c_reset} $selected_hostname
+${c_yellow}IP Address:${c_reset} $primary_ip
 EOF
 
+	local autologin_conf=/etc/systemd/system/getty@tty1.service.d/autologin.conf
 	if [[ "$enable_autologin" == "yes" ]]; then
-		mkdir -p /etc/systemd/system/getty@tty1.service.d
-		cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf <<EOF
+		printf '%s\n' "${c_yellow}$selected_hostname login: root (automatic login)${c_reset}" >> /etc/issue
+		mkdir -p "$(dirname "$autologin_conf")"
+		cat > "$autologin_conf" <<EOF
 [Service]
 ExecStart=
 ExecStart=-/sbin/agetty --autologin root --noclear %I \$TERM
 EOF
-		systemctl daemon-reload
-		systemctl restart getty@tty1.service
+	else
+		rm -f "$autologin_conf"
+	fi
+	systemctl daemon-reload
+	systemctl restart getty@tty1.service || true
+}
+
+# ---------------------------------------------------------------------------
+# Ablauf
+# ---------------------------------------------------------------------------
+
+cleanup() {
+	# Vom Pipe-Modus heruntergeladene Kopie des Installers wieder entfernen
+	local self="${BASH_SOURCE[0]:-}"
+	if [[ "$self" == /tmp/visca-bridge-install.* ]]; then
+		rm -f "$self"
 	fi
 }
 
-apt update
-apt install -y git python3 python3-pip python3-venv
+main() {
+	ensure_root "$@"
+	trap cleanup EXIT
 
-if ! id -u Visca-Bridge >/dev/null 2>&1; then
-	adduser --disabled-password --gecos "" --home /home/Visca-Bridge --shell /bin/bash Visca-Bridge
-fi
+	info "Installiere Systempakete"
+	apt-get update
+	apt-get install -y git python3 python3-pip python3-venv ca-certificates </dev/null
 
-usermod -aG dialout Visca-Bridge
+	if ! id -u "$INSTALL_USER" >/dev/null 2>&1; then
+		info "Lege Benutzer $INSTALL_USER an"
+		adduser --disabled-password --gecos "" --home "$INSTALL_HOME" --shell /bin/bash "$INSTALL_USER" </dev/null
+	fi
+	usermod -aG dialout "$INSTALL_USER"
 
-mkdir -p /home/Visca-Bridge
+	fetch_sources
 
-if [[ "$SCRIPT_DIR" != "$INSTALL_DIR" ]]; then
-	mkdir -p "$INSTALL_DIR"
-	cp -a "$SCRIPT_DIR"/. "$INSTALL_DIR"/
-fi
+	info "Richte Python-venv ein"
+	cd "$INSTALL_DIR"
+	python3 -m venv venv
+	./venv/bin/pip install --quiet --upgrade pip
+	./venv/bin/pip install --quiet -r requirements.txt
 
-cd "$INSTALL_DIR"
-python3 -m venv venv
-./venv/bin/pip install --upgrade pip
-./venv/bin/pip install -r requirements.txt
+	info "Serielle Schnittstelle konfigurieren"
+	local serial_port serial_baud
+	serial_port="$(select_serial_port)"
+	serial_baud="$(select_baudrate)"
 
-SERIAL_PORT_SELECTED="$(select_serial_port)"
-SERIAL_BAUDRATE_SELECTED="$(select_baudrate)"
-cat > "$INSTALL_DIR/.env" <<EOF
-VISCA_SERIAL_PORT=$SERIAL_PORT_SELECTED
-VISCA_SERIAL_BAUDRATE=$SERIAL_BAUDRATE_SELECTED
+	cat > "$ENV_FILE" <<EOF
+VISCA_SERIAL_PORT=$serial_port
+VISCA_SERIAL_BAUDRATE=$serial_baud
 EOF
 
-configure_console_login
+	info "Konsole konfigurieren"
+	configure_console_login
 
-install -m 644 "$SERVICE_SRC" /etc/systemd/system/visca-bridge.service
-systemctl daemon-reload
-systemctl enable visca-bridge.service
-systemctl restart visca-bridge.service
+	chown -R "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR"
+	chmod 600 "$ENV_FILE"
+
+	info "Installiere systemd-Service"
+	install -m 644 "$INSTALL_DIR/visca-bridge.service" /etc/systemd/system/visca-bridge.service
+	systemctl daemon-reload
+	systemctl enable visca-bridge.service
+	systemctl restart visca-bridge.service
+
+	msg ""
+	info "Fertig."
+	msg "  Konfiguration: $ENV_FILE"
+	msg "    VISCA_SERIAL_PORT=$serial_port"
+	msg "    VISCA_SERIAL_BAUDRATE=$serial_baud"
+	[[ -e "$serial_port" ]] || warn "$serial_port existiert nicht - der Service startet erst, wenn der Adapter erkannt wird."
+	msg "  Status: systemctl status visca-bridge"
+	msg "  Logs:   journalctl -u visca-bridge -f"
+}
+
+main "$@"
