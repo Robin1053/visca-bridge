@@ -21,9 +21,9 @@ Visca-bridge soll eine schlanke VISCA-over-IP ↔ RS-232 Bridge werden. Dieser B
 │   ├── pom.xml
 │   └── src/main/java/de/robineb/
 │       ├── Main.java                        # Einstiegspunkt, startet den Server
-│       ├── Server/
-│       │   └── ViscaIpServer.java           # TCP-Server, ein Thread pro Client
-│       └── Handler/
+│       ├── server/
+│       │   └── ViscaIpServer.java           # TCP-Server, ein Virtual Thread pro Client
+│       └── handler/
 │           ├── ClientHandler.java           # Liest Daten eines Clients, zerlegt VISCA-Nachrichten
 │           └── ViscaHandler.java            # Platzhalter für die VISCA-Verarbeitung
 ├── VISCA_TCP_README.md                      # Doku der früheren Python-Version
@@ -35,7 +35,7 @@ Visca-bridge soll eine schlanke VISCA-over-IP ↔ RS-232 Bridge werden. Dieser B
 ## Was schon funktioniert
 
 - **TCP-Server** auf Port `10000` (fest in `Main.java` eingetragen)
-- **Mehrere Clients gleichzeitig**: Jede Verbindung läuft in einem eigenen `ClientHandler`-Thread
+- **Mehrere Clients gleichzeitig**: Jede Verbindung läuft in einem eigenen Virtual Thread (`ClientHandler`)
 - **VISCA-Framing**: Eingehende Bytes werden gepuffert und am Terminator `0xFF` in einzelne
   Nachrichten zerlegt. Das funktioniert auch, wenn eine Nachricht über mehrere TCP-Pakete
   verteilt ankommt.
@@ -44,7 +44,7 @@ Visca-bridge soll eine schlanke VISCA-over-IP ↔ RS-232 Bridge werden. Dieser B
 ## Voraussetzungen
 
 - JDK 25 (LTS) oder neuer
-- Maven 3.9+ (oder die IntelliJ-IDEA-Projektkonfiguration im Repo)
+- Maven 3.9+ (oder IntelliJ IDEA, das Maven-Projekt lässt sich direkt importieren)
 
 ## Bauen und Starten
 
@@ -83,10 +83,10 @@ printf '\x81\x01\x04\x00\x02\xFF' | nc localhost 10000
 Erwartete Server-Ausgabe:
 
 ```
-Client connected: /127.0.0.1
+Client connected: /127.0.0.1:54321
 Received: 81 01 04 00 02 FF
 VISCA: 81 01 04 00 02 FF
-Client disconnected
+Client disconnected: /127.0.0.1:54321
 ```
 
 ## Geplant

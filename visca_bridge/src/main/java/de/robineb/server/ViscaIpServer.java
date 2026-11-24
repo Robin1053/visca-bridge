@@ -1,8 +1,7 @@
-package de.robineb.Server;
+package de.robineb.server;
 
-import de.robineb.Handler.ClientHandler;
+import de.robineb.handler.ClientHandler;
 
-import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -18,12 +17,10 @@ public class ViscaIpServer {
         try (ServerSocket server = new ServerSocket(port)) {
             while (true) {
                 Socket client = server.accept();
-                System.out.println("Client connected: " + client.getLocalAddress());
+                System.out.println("Client connected: " + client.getRemoteSocketAddress());
 
-                InputStream in = client.getInputStream();
-                byte[] buffer = new byte[1024];
-
-                new ClientHandler(client).start();
+                // Ein Virtual Thread pro Client
+                Thread.ofVirtual().start(new ClientHandler(client));
             }
         } catch (Exception e) {
             e.printStackTrace();

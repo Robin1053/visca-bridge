@@ -1,4 +1,4 @@
-package de.robineb.Handler;
+package de.robineb.handler;
 
 public class ViscaHandler {
 }

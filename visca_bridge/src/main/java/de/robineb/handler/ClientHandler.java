@@ -1,10 +1,11 @@
-package de.robineb.Handler;
+package de.robineb.handler;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.Socket;
 
-public class ClientHandler extends Thread {
-    private final java.io.ByteArrayOutputStream bufferStream = new java.io.ByteArrayOutputStream();
+public class ClientHandler implements Runnable {
+    private final ByteArrayOutputStream bufferStream = new ByteArrayOutputStream();
     private final Socket client;
 
     public ClientHandler(Socket client) {
@@ -13,7 +14,7 @@ public class ClientHandler extends Thread {
 
     @Override
     public void run() {
-        try {
+        try (client) {
             InputStream in = client.getInputStream();
             byte[] buffer = new byte[1024];
 
@@ -21,7 +22,7 @@ public class ClientHandler extends Thread {
                 int len = in.read(buffer);
 
                 if (len == -1) {
-                    System.out.println("Client disconnected");
+                    System.out.println("Client disconnected: " + client.getRemoteSocketAddress());
                     break;
                 }
 
