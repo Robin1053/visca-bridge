@@ -4,7 +4,7 @@
 [![Last Commit](https://img.shields.io/github/last-commit/Robin1053/visca-bridge)](https://github.com/Robin1053/visca-bridge/commits/master)
 [![Open Issues](https://img.shields.io/github/issues/Robin1053/visca-bridge)](https://github.com/Robin1053/visca-bridge/issues)
 [![Top language](https://img.shields.io/github/languages/top/Robin1053/visca-bridge)](https://github.com/Robin1053/visca-bridge)
-[![Java](https://img.shields.io/badge/java-24-orange)](https://openjdk.org/)
+[![Java](https://img.shields.io/badge/java-25%20LTS-orange)](https://openjdk.org/)
 
 Visca-bridge soll eine schlanke VISCA-over-IP ↔ RS-232 Bridge werden. Dieser Branch enthält die
 **Neuimplementierung in Java**. Sie ist noch in einem frühen Stadium.
@@ -17,7 +17,7 @@ Visca-bridge soll eine schlanke VISCA-over-IP ↔ RS-232 Bridge werden. Dieser B
 
 ```
 ./
-├── visca_bridge/                            # Maven-Projekt (Java 24)
+├── visca_bridge/                            # Maven-Projekt (Java 25)
 │   ├── pom.xml
 │   └── src/main/java/de/robineb/
 │       ├── Main.java                        # Einstiegspunkt, startet den Server
@@ -43,7 +43,7 @@ Visca-bridge soll eine schlanke VISCA-over-IP ↔ RS-232 Bridge werden. Dieser B
 
 ## Voraussetzungen
 
-- JDK 24
+- JDK 25 (LTS) oder neuer
 - Maven 3.9+ (oder die IntelliJ-IDEA-Projektkonfiguration im Repo)
 
 ## Bauen und Starten
